@@ -39,6 +39,10 @@ class ExecutionBroker(ABC):
         """Modifica SL/TP de una posición. Por defecto no soportado."""
         return False
 
+    def poll_closed_deals(self) -> List:
+        """Operaciones cerradas desde la última consulta. Por defecto ninguna."""
+        return []
+
 
 class PaperBroker(ExecutionBroker):
     """Broker simulado para backtesting y tests. PnL en dinero de contrato."""

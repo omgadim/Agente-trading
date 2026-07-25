@@ -5,6 +5,7 @@ from .broker import ExecutionBroker, Order, PaperBroker
 from .guards import MarketGuard
 from .mt5_client import (
     AccountInfo,
+    ClosedDeal,
     MT5Client,
     OrderRequest,
     OrderResult,
@@ -31,6 +32,7 @@ __all__ = [
     "SymbolInfo",
     "Tick",
     "Position",
+    "ClosedDeal",
     "OrderRequest",
     "OrderResult",
 ]

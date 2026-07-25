@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pandas as pd
-import pytest
 
 from trading_system.core import AgentDecision, AgentRegistry, MarketData, SignalType, Timeframe
 from trading_system.core.market_data import MarketRegime

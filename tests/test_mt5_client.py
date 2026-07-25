@@ -1,7 +1,6 @@
 """Tests del cliente MT5 (simulado y validación del adapter real)."""
 from __future__ import annotations
 
-import pandas as pd
 import pytest
 
 from trading_system.core.enums import SignalType, Timeframe

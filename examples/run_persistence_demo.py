@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trading_system.core import AgentRegistry
 from trading_system.data import SimulatedDataFeed
 from trading_system.engine import build_agents, build_weighting
 from trading_system.persistence import SqliteRepository

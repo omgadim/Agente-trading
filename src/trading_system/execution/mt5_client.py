@@ -74,6 +74,16 @@ class Position:
 
 
 @dataclass
+class ClosedDeal:
+    """Operación cerrada (por SL/TP en el broker o manualmente)."""
+
+    ticket: int
+    symbol: str
+    exit_price: float
+    pnl: float
+
+
+@dataclass
 class OrderRequest:
     symbol: str
     direction: SignalType  # BUY | SELL
@@ -132,6 +142,10 @@ class MT5Client(ABC):
 
     @abstractmethod
     def positions(self, symbol: Optional[str] = None) -> List[Position]: ...
+
+    def poll_closed_deals(self) -> List["ClosedDeal"]:
+        """Operaciones cerradas desde la última consulta. Por defecto ninguna."""
+        return []
 
 
 # --------------------------------------------------------------------------- #
@@ -379,6 +393,7 @@ class SimulatedMT5Client(MT5Client):
         self._next_ticket = 1000
         self.realized_pnl = 0.0
         self.closed: List[Position] = []
+        self._closed_cursor = 0
         self._connected = False
 
     # ---- ciclo de vida ----
@@ -486,6 +501,12 @@ class SimulatedMT5Client(MT5Client):
             p.profit = self._pnl(p, price)
             result.append(p)
         return result
+
+    def poll_closed_deals(self) -> List[ClosedDeal]:
+        """Devuelve las posiciones cerradas (SL/TP/manual) desde la última consulta."""
+        new = self.closed[self._closed_cursor:]
+        self._closed_cursor = len(self.closed)
+        return [ClosedDeal(p.ticket, p.symbol, p.price_current, p.profit) for p in new]
 
     # ---- internos ----
     def _pnl(self, pos: Position, exit_price: float) -> float:

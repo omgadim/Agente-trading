@@ -5,7 +5,7 @@ Compartido entre `OpenTradesControlAgent` (recomendación) y `LiveTrader`
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 def trailing_actions(

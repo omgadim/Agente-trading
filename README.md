@@ -68,13 +68,16 @@ src/trading_system/
 ├── ml/            # features, modelos (logística/GB/XGBoost), walk-forward
 ├── context/       # proveedores externos: noticias, correlación, sentimiento
 ├── persistence/   # Repository (SQLite/MySQL) de decisiones/operaciones
+├── alerts/        # notificaciones: Logging/Telegram/Email/Composite
 ├── backtest/      # backtester walk-forward + métricas
 ├── utils/         # logging, config
 ├── engine.py      # fachada TradingEngine (backtest/decisión)
-└── live.py        # LiveTrader (operativa en vivo / paper)
+└── live.py        # LiveTrader (live/paper + kill switch + conciliación)
 integrations/
 ├── pine/          # Pine Script v6 (visualización TradingView)
 └── dashboard/     # PHP + MySQL (Fase 6)
+.github/workflows/ # CI (lint + tests + cobertura)
+Dockerfile · docker-compose.yml   # despliegue (Fase 7)
 ```
 
 ## 🧠 Estado
@@ -99,13 +102,18 @@ integrations/
 - **Fase 6 ✅** — Persistencia (patrón Repository, SQLite/MySQL) de decisiones,
   operaciones y desempeño por agente/régimen; dashboard PHP con KPIs y desempeño.
   Demo: `python -m examples.run_persistence_demo`.
+- **Fase 7 ✅** — Endurecimiento y despliegue: CI (lint + tests + cobertura ~92%),
+  alertas (Telegram/Email/Composite), `KillSwitch` (pérdida diaria/drawdown/
+  rachas/flag manual), conciliación de cierres en vivo, Docker y runbook
+  operativo (`docs/OPERACIONES.md`).
 
-**21 agentes reales** operativos y 1 scaffold (Elliott). Backtests, sesión paper
-y ML usan **datos simulados** — validan la mecánica y el pipeline, no un *edge*
-real. La validación con datos reales requiere `RealMT5Client` en una **cuenta
-demo** de Windows (el paquete `MetaTrader5` es solo-Windows) y proveedores de
-contexto reales conectados a las interfaces de `context/`. Ver
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Roadmap completo (Fases 1-7).** **21 agentes reales** operativos y 1 scaffold
+(Elliott). Backtests, sesión paper y ML usan **datos simulados** — validan la
+mecánica y el pipeline, no un *edge* real. La operativa real requiere
+`RealMT5Client` en una **cuenta demo** de Windows (el paquete `MetaTrader5` es
+solo-Windows) y proveedores de contexto reales conectados a las interfaces de
+`context/`. Ver [`docs/ROADMAP.md`](docs/ROADMAP.md) y
+[`docs/OPERACIONES.md`](docs/OPERACIONES.md).
 
 ## ⚠️ Aviso
 

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Sequence
+from typing import Dict, Sequence
 
 
 def compute_metrics(pnls: Sequence[float], equity_curve: Sequence[float]) -> Dict[str, float]:

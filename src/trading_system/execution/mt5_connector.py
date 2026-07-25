@@ -73,6 +73,10 @@ class MT5Broker(ExecutionBroker):
             ))
         return orders
 
+    def poll_closed_deals(self):
+        """Delega en el cliente la lista de operaciones cerradas recientes."""
+        return self.client.poll_closed_deals()
+
 
 class MT5DataFeed(DataFeed):
     """Fuente de datos multi-timeframe en vivo desde MetaTrader 5."""

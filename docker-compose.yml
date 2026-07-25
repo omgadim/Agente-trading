@@ -1,0 +1,54 @@
+# Orquestación local: base de datos MySQL + dashboard PHP + motor Python.
+# El modo live real (MetaTrader5) requiere Windows; este compose cubre
+# backtesting/paper + persistencia + visualización.
+services:
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpw}
+      MYSQL_DATABASE: ${DB_NAME:-trading_system}
+      MYSQL_USER: ${DB_USER:-trader}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-traderpw}
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./integrations/dashboard/sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dashboard:
+    image: php:8.2-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-trading_system}
+      DB_USER: ${DB_USER:-trader}
+      DB_PASSWORD: ${DB_PASSWORD:-traderpw}
+    ports:
+      - "8080:80"
+    volumes:
+      - ./integrations/dashboard/public:/var/www/html:ro
+    command: >
+      bash -c "docker-php-ext-install pdo pdo_mysql && apache2-foreground"
+
+  engine:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-trading_system}
+      DB_USER: ${DB_USER:-trader}
+      DB_PASSWORD: ${DB_PASSWORD:-traderpw}
+    # Por defecto ejecuta un backtest; en producción, el runner live.
+    command: ["python", "-m", "examples.run_backtest"]
+
+volumes:
+  db_data:

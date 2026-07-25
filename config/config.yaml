@@ -41,6 +41,21 @@ live:
   be_trigger: 1.0         # ATR de beneficio para mover a break-even
   trail_trigger: 2.0      # ATR de beneficio para activar trailing
 
+# Kill switch / watchdog (Fase 7): corta nuevas entradas ante riesgo.
+kill_switch:
+  enabled: true
+  max_daily_loss: 500.0          # pérdida diaria máxima (dinero); null = sin límite
+  max_drawdown: 800.0            # drawdown máximo de equity realizada; null = sin límite
+  max_consecutive_losses: 5      # rachas de pérdidas; null = sin límite
+  flag_file: null                # ruta a un fichero cuya existencia detiene la operativa
+
+# Alertas (Fase 7): canales de notificación. Credenciales por variables de entorno.
+alerts:
+  enabled: false
+  channels: [logging]            # logging | telegram | email (combinables)
+  # telegram: token/chat_id por TELEGRAM_TOKEN / TELEGRAM_CHAT_ID
+  # email:    por SMTP_HOST/PORT/USER/PASSWORD y ALERT_TO
+
 # Supervisor central
 supervisor:
   weighting: adaptive        # static | adaptive | meta

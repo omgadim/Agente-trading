@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from trading_system.core import AgentDecision, BaseAgent, MarketData, SignalType, Timeframe
+from trading_system.core import BaseAgent, MarketData, SignalType, Timeframe
 from trading_system.core.market_data import MarketRegime
 from trading_system.risk import RiskManager
 from trading_system.supervisor import AdaptiveWeighting, StaticWeighting, Supervisor

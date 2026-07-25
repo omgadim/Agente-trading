@@ -1,7 +1,6 @@
 """Tests del orquestador LiveTrader (con broker/feed simulados)."""
 from __future__ import annotations
 
-import pytest
 
 from trading_system import LiveTrader
 from trading_system.core import BaseAgent, SignalType

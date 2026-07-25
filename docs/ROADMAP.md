@@ -146,11 +146,29 @@ pruebas automáticas y documentar.
 > visualización se entregó en la Fase 1 (`integrations/pine`); su sincronización
 > en vivo (alertas/webhooks → backend) es un refinamiento de la Fase 7.
 
-## 🔜 Fase 7 — Endurecimiento y despliegue
+## ✅ Fase 7 — Endurecimiento y despliegue (ENTREGADA)
 
-- [ ] CI (lint + tests), cobertura, contenedores.
-- [ ] Alertas (Telegram/email), watchdog y *kill switch*.
-- [ ] Documentación operativa y *runbooks*.
+- [x] CI (GitHub Actions): lint con ruff + tests en Python 3.10/3.11/3.12 +
+      cobertura (`pytest-cov`). Ruff configurado en `pyproject.toml`; código
+      lint-clean. Cobertura ~92%.
+- [x] Alertas (`alerts/`): interfaz `Notifier` con `LoggingNotifier`,
+      `TelegramNotifier`, `EmailNotifier` y `CompositeNotifier` (fan-out con
+      aislamiento de fallos). Transporte inyectable (testeable sin red).
+- [x] `KillSwitch` (`risk/kill_switch.py`): corta nuevas entradas por pérdida
+      diaria, drawdown, rachas de pérdidas o flag manual (fichero).
+- [x] Conciliación de cierres en vivo: `MT5Client.poll_closed_deals()` +
+      `ClosedDeal`; el `LiveTrader` registra cierres (persistencia, riesgo,
+      kill switch) y notifica apertura/cierre — **completa la persistencia live**.
+- [x] Contenedores: `Dockerfile` (motor) y `docker-compose.yml` (MySQL +
+      dashboard PHP + motor), con esquema MySQL auto-inicializado.
+- [x] Runbook operativo (`docs/OPERACIONES.md`): despliegue, controles de riesgo,
+      parada de emergencia, monitorización, respuesta a incidentes y checklist
+      pre-real. 17 tests nuevos (149 en total).
+
+> Con la Fase 7 se cierra el roadmap planificado. El sistema es funcional,
+> testeado y desplegable en modo backtest/paper; el modo **live real** requiere
+> ejecutar `RealMT5Client` en Windows con el terminal MT5 y validación previa en
+> **cuenta demo** (ver runbook).
 
 ---
 

@@ -109,10 +109,10 @@ class CandlestickPatternAgent(BaseAgent):
         if len(df) < 3:
             return self._wait("Datos insuficientes para velas")
 
-        o, h, l, c = (df[x] for x in ("open", "high", "low", "close"))
+        o, hi, lo, c = (df[x] for x in ("open", "high", "low", "close"))
         o1, c1 = o.iloc[-1], c.iloc[-1]
         o2, c2 = o.iloc[-2], c.iloc[-2]
-        rng = h.iloc[-1] - l.iloc[-1]
+        rng = hi.iloc[-1] - lo.iloc[-1]
         body = abs(c1 - o1)
 
         signal, conf, expl = SignalType.WAIT, 0.0, "Sin patrón relevante"
@@ -125,8 +125,8 @@ class CandlestickPatternAgent(BaseAgent):
             signal, conf, expl = SignalType.SELL, 60.0, "Envolvente bajista"
         # Pin bar (mecha larga)
         elif rng > 0 and body / rng < 0.35:
-            upper = h.iloc[-1] - max(o1, c1)
-            lower = min(o1, c1) - l.iloc[-1]
+            upper = hi.iloc[-1] - max(o1, c1)
+            lower = min(o1, c1) - lo.iloc[-1]
             if lower > 2 * body and lower > upper:
                 signal, conf, expl = SignalType.BUY, 55.0, "Pin bar alcista (mecha inferior)"
             elif upper > 2 * body and upper > lower:
