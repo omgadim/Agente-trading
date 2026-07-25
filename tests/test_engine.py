@@ -23,7 +23,8 @@ def test_engine_runs_full_cycle():
     assert "trend_mtf" in names
     assert "smart_money" in names       # Fase 2, activo en config
     assert "machine_learning" in names  # Fase 4, activo en config
-    assert "news" not in names          # scaffold deshabilitado en config
+    assert "news" in names              # Fase 5, activo en config
+    assert "elliott" not in names       # scaffold deshabilitado en config
 
 
 def test_engine_execute_opens_paper_position():

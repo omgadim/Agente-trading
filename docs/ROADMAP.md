@@ -101,11 +101,28 @@ pruebas automáticas y documentar.
 > secuencial queda como ruta opcional (requiere TensorFlow/torch, comentados en
 > `requirements.txt`); el modelo tabular (XGBoost) ya está integrado.
 
-## 🔜 Fase 5 — Contexto externo
+## ✅ Fase 5 — Contexto externo (ENTREGADA)
 
-- [ ] `NewsAgent` (calendario económico, alto impacto → veto/timing).
-- [ ] `CorrelationAgent` (DXY, US10Y, SPX).
-- [ ] `SentimentAgent`.
+- [x] Paquete `context/` con proveedores inyectables (Adapter + DI): calendario
+      económico (`InMemoryNewsProvider`, `CsvNewsProvider`), activos
+      correlacionados (`InMemoryCorrelationProvider`) y sentimiento retail
+      (`InMemorySentimentProvider`), cada uno tras su interfaz.
+- [x] `NewsAgent`: *blackout* configurable antes/después de eventos de alto
+      impacto (por defecto USD) → veta la operación (el Supervisor lo respeta vía
+      `metadata['veto']`).
+- [x] `CorrelationAgent`: sesgo `Σ corr_i · momentum_i` sobre DXY/US10Y/SPX (u
+      otros); filtra por correlación mínima significativa.
+- [x] `SentimentAgent`: contrarian sobre el posicionamiento retail (extremos
+      largo/corto → SELL/BUY).
+- [x] Demo `examples/run_context_demo.py` (veto por noticia + aporte de
+      correlación/sentimiento) y 18 tests nuevos (125 en total).
+
+> Los agentes de contexto quedan *enabled pero inertes* (WAIT) hasta que se les
+> inyecta un proveedor: el `NewsAgent` puede cargar un CSV (`calendar_csv`);
+> `correlation`/`sentiment` reciben el objeto en `agent.config['provider']`. En
+> producción, los adapters reales (API de calendario, feed multi-símbolo de MT5,
+> COT/sentiment) se conectan a esas mismas interfaces. `SentimentAgent` se añade
+> como agente extra (#22) más allá de los 20 originales.
 
 ## 🔜 Fase 6 — Persistencia y Dashboard
 

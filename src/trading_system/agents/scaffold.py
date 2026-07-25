@@ -6,8 +6,9 @@ explicación de su plan. Se implementarán en las fases indicadas del ROADMAP. E
 mantiene el catálogo completo sin fingir capacidades que aún no existen.
 
 Ya implementados en fases anteriores: Smart Money / Price Action
-(`smart_money_agents.py`, Fase 2) y Machine Learning (`ml_agent.py`, Fase 4).
-Scaffolds restantes: Elliott (Fase 2+), Correlación y Noticias (Fase 5).
+(`smart_money_agents.py`, Fase 2), Machine Learning (`ml_agent.py`, Fase 4) y
+contexto externo — noticias, correlación, sentimiento (`context_agents.py`,
+Fase 5). Scaffold restante: Elliott (Fase 2+, requiere validación).
 """
 from __future__ import annotations
 
@@ -35,15 +36,3 @@ class _PlannedAgent(BaseAgent):
 class ElliottWaveAgent(_PlannedAgent):
     category = "price_action"; phase = "2+"
     idea = "Conteo de ondas de Elliott (impulsivas/correctivas) — requiere validación"
-
-
-@register_agent("correlation")
-class CorrelationAgent(_PlannedAgent):
-    category = "context"; phase = "5"
-    idea = "Correlación con DXY, US10Y y SPX"
-
-
-@register_agent("news")
-class NewsAgent(_PlannedAgent):
-    category = "context"; phase = "5"
-    idea = "Calendario económico de alto impacto (veto/timing)"

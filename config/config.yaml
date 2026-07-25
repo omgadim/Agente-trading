@@ -88,7 +88,23 @@ agents:
     retrain_every: 50       # reentrenamiento periódico (ventana expansiva)
     min_train: 150
 
+  # --- Fase 5: Contexto externo (implementados) ---
+  # Requieren un proveedor de datos. El NewsAgent puede cargar un CSV
+  # (calendar_csv); correlation/sentiment necesitan inyectar el objeto provider
+  # en agent.config['provider'] tras construir el motor. Sin proveedor devuelven
+  # WAIT de forma inocua.
+  news:
+    # calendar_csv: data/calendar.csv   # export de ForexFactory/Investing
+    blackout_before_min: 30
+    blackout_after_min: 15
+    currencies: [USD]
+  correlation:
+    lookback: 50
+    min_abs_corr: 0.3
+    threshold: 0.1
+  sentiment:
+    extreme_long: 70
+    extreme_short: 30
+
   # --- Agentes planificados (scaffold: devuelven WAIT hasta su fase) ---
   elliott: { enabled: false }
-  correlation: { enabled: false }
-  news: { enabled: false }

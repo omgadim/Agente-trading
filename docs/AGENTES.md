@@ -41,9 +41,10 @@ Leyenda de estado: ✅ implementado (Fase 1) · 🚧 scaffold (WAIT + TODO) · �
 
 | # | Agente | Estado | Idea central |
 |---|--------|--------|--------------|
-| 16 | `CorrelationAgent` | 🚧🧠 | DXY, US10Y, SPX vs XAUUSD |
-| 17 | `NewsAgent` | 🚧🧠 | Calendario económico de alto impacto (veto/timing) |
+| 16 | `CorrelationAgent` | ✅ | DXY, US10Y, SPX vs XAUUSD (provider inyectable) |
+| 17 | `NewsAgent` | ✅ | Calendario económico de alto impacto (veto/timing) |
 | 18 | `SessionAgent` (extra) | ✅ | Sesión Asia/Londres/NY, killzones |
+| 22 | `SentimentAgent` (extra) | ✅ | Contrarian sobre posicionamiento retail |
 
 ## Categoría: Inteligencia y Gestión
 

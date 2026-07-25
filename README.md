@@ -66,6 +66,7 @@ src/trading_system/
 ├── risk/          # RiskManager (sizing + veto) + gestión de posiciones
 ├── execution/     # broker/feed MT5 (interfaz MT5Client), guards, PaperBroker
 ├── ml/            # features, modelos (logística/GB/XGBoost), walk-forward
+├── context/       # proveedores externos: noticias, correlación, sentimiento
 ├── backtest/      # backtester walk-forward + métricas
 ├── utils/         # logging, config
 ├── engine.py      # fachada TradingEngine (backtest/decisión)
@@ -91,12 +92,16 @@ integrations/
   walk-forward, `MachineLearningAgent` y `MetaModelWeighting` (meta-modelo de
   stacking que aprende el peso de cada agente por régimen). Demo:
   `python -m examples.run_ml_train`.
+- **Fase 5 ✅** — Contexto externo con proveedores inyectables: `NewsAgent`
+  (veto por calendario económico), `CorrelationAgent` (DXY/US10Y/SPX) y
+  `SentimentAgent` (contrarian retail). Demo: `python -m examples.run_context_demo`.
 
-**18 agentes reales** operativos y 3 scaffolds (Elliott, Correlación, Noticias)
-para fases posteriores. Backtests, sesión paper y ML usan **datos simulados** —
-validan la mecánica y el pipeline, no un *edge* real. La validación con datos
-reales requiere `RealMT5Client` en una **cuenta demo** de Windows (el paquete
-`MetaTrader5` es solo-Windows). Ver [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**21 agentes reales** operativos y 1 scaffold (Elliott). Backtests, sesión paper
+y ML usan **datos simulados** — validan la mecánica y el pipeline, no un *edge*
+real. La validación con datos reales requiere `RealMT5Client` en una **cuenta
+demo** de Windows (el paquete `MetaTrader5` es solo-Windows) y proveedores de
+contexto reales conectados a las interfaces de `context/`. Ver
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## ⚠️ Aviso
 

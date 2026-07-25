@@ -60,8 +60,8 @@ def test_disabled_agent_waits(market_data):
 
 
 def test_scaffold_agent_is_planned(market_data):
-    # news sigue siendo scaffold (Fase 5); machine_learning ya es real (Fase 4).
-    decision = AgentRegistry.create("news", {}).run(market_data)
+    # elliott es el único scaffold restante (Fase 2+); el resto ya son reales.
+    decision = AgentRegistry.create("elliott", {}).run(market_data)
     assert decision.signal is SignalType.WAIT
     assert decision.metadata.get("planned") is True
 

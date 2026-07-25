@@ -8,6 +8,7 @@ from __future__ import annotations
 
 # Los imports disparan el registro por efecto de los decoradores.
 from . import (
+    context_agents,
     ml_agent,
     risk_agents,
     scaffold,
@@ -23,6 +24,7 @@ __all__ = [
     "structure_agents",
     "smart_money_agents",
     "ml_agent",
+    "context_agents",
     "risk_agents",
     "scaffold",
 ]
