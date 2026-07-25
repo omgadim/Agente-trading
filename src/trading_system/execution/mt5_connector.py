@@ -1,57 +1,121 @@
-"""Adapter de MetaTrader 5 (implementación completa en Fase 3).
+"""Broker y feed de MetaTrader 5, construidos sobre la interfaz `MT5Client`.
 
-Aísla la API concreta del paquete `MetaTrader5` (solo disponible en Windows con
-el terminal instalado). Se importa de forma perezosa para que el resto del
-sistema funcione y se testee sin MT5. En la Fase 3 se completan `open`/`close` y
-la obtención de datos en vivo, y se añade `MT5DataFeed`.
+Ni `MT5Broker` ni `MT5DataFeed` conocen la API concreta de MT5: dependen de
+`MT5Client`, por lo que funcionan igual con `RealMT5Client` (producción) o
+`SimulatedMT5Client` (tests/paper en cualquier SO).
 """
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import Dict, Iterable, List, Optional
 
-from ..core.enums import SignalType
+from ..core.enums import Timeframe
 from ..core.exceptions import ExecutionError
+from ..core.market_data import MarketData
+from ..data.feed import DataFeed, compute_regime
 from .broker import ExecutionBroker, Order
+from .mt5_client import MT5Client, OrderRequest, RealMT5Client
 
 
 class MT5Broker(ExecutionBroker):
-    """Broker real sobre MetaTrader 5. Requiere el paquete `MetaTrader5`."""
+    """Ejecución de órdenes en MetaTrader 5 vía `MT5Client`."""
+
+    def __init__(self, client: MT5Client, magic: int = 20250725) -> None:
+        self.client = client
+        self.magic = magic
+        self.logger = logging.getLogger("broker.mt5")
+
+    def open(self, order: Order) -> Order:
+        req = OrderRequest(
+            symbol=order.symbol,
+            direction=order.direction,
+            volume=order.volume,
+            price=None,  # a mercado
+            sl=order.stop_loss,
+            tp=order.take_profit,
+            magic=self.magic,
+        )
+        result = self.client.send_order(req)
+        if not result.success:
+            raise ExecutionError(f"order_send falló ({result.retcode}): {result.comment}")
+        order.ticket = result.ticket
+        if result.price:
+            order.price = result.price
+        self.logger.info(
+            "OPEN #%s %s %s vol=%.2f @ %.2f",
+            order.ticket, order.direction.value, order.symbol, order.volume, order.price,
+        )
+        return order
+
+    def modify(self, ticket: int, sl: Optional[float], tp: Optional[float]) -> bool:
+        result = self.client.modify_position(ticket, sl, tp)
+        if not result.success:
+            self.logger.warning("modify #%s falló: %s", ticket, result.comment)
+        return result.success
+
+    def close(self, ticket: int, price: Optional[float] = None) -> float:
+        # PnL flotante en el momento del cierre (aprox. del realizado).
+        positions = {p.ticket: p for p in self.client.positions()}
+        pos = positions.get(ticket)
+        result = self.client.close_position(ticket)
+        if not result.success:
+            raise ExecutionError(f"cierre #{ticket} falló: {result.comment}")
+        pnl = pos.profit if pos else 0.0
+        self.logger.info("CLOSE #%s pnl=%.2f", ticket, pnl)
+        return pnl
+
+    def open_positions(self) -> List[Order]:
+        orders: List[Order] = []
+        for p in self.client.positions():
+            orders.append(Order(
+                symbol=p.symbol, direction=p.direction, volume=p.volume,
+                price=p.price_open, stop_loss=p.sl, take_profit=p.tp, ticket=p.ticket,
+            ))
+        return orders
+
+
+class MT5DataFeed(DataFeed):
+    """Fuente de datos multi-timeframe en vivo desde MetaTrader 5."""
 
     def __init__(
         self,
-        login: Optional[int] = None,
-        password: Optional[str] = None,
-        server: Optional[str] = None,
-        magic: int = 20250725,
+        client: MT5Client,
+        timeframes: Iterable[Timeframe] = (
+            Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4,
+        ),
+        bars: int = 500,
     ) -> None:
-        self.login = login
-        self.password = password
-        self.server = server
-        self.magic = magic
-        self._mt5 = None
-        self.logger = logging.getLogger("broker.mt5")
+        self.client = client
+        self.timeframes = tuple(timeframes)
+        self.bars = bars
 
-    def connect(self) -> None:
-        try:
-            import MetaTrader5 as mt5  # import perezoso
-        except ImportError as exc:  # pragma: no cover - depende del entorno
-            raise ExecutionError(
-                "El paquete MetaTrader5 no está instalado (solo Windows). "
-                "Instálalo en el entorno de producción para el modo live."
-            ) from exc
+    def get_market_data(self, symbol: str = "XAUUSD") -> MarketData:
+        frames: Dict[Timeframe, "object"] = {}
+        for tf in self.timeframes:
+            df = self.client.rates(symbol, tf, self.bars)
+            if df is not None and not df.empty:
+                frames[tf] = df
+        if not frames:
+            raise ExecutionError(f"Sin datos de {symbol} desde MT5")
 
-        if not mt5.initialize(login=self.login, password=self.password, server=self.server):
-            raise ExecutionError(f"initialize() falló: {mt5.last_error()}")
-        self._mt5 = mt5
-        self.logger.info("Conectado a MT5 (server=%s)", self.server)
+        tick = self.client.tick(symbol)
+        primary = frames[min(frames, key=lambda t: t.minutes)]
+        regime = compute_regime(frames.get(Timeframe.H1, primary))
+        return MarketData(
+            symbol=symbol,
+            frames=frames,
+            price=tick.mid,
+            spread=max(0.0, tick.ask - tick.bid),
+            regime=regime,
+        )
 
-    # Los métodos siguientes se implementan por completo en la Fase 3.
-    def open(self, order: Order) -> Order:  # pragma: no cover - Fase 3
-        raise NotImplementedError("MT5Broker.open se implementa en la Fase 3")
 
-    def close(self, ticket: int, price: float) -> float:  # pragma: no cover - Fase 3
-        raise NotImplementedError("MT5Broker.close se implementa en la Fase 3")
-
-    def open_positions(self) -> List[Order]:  # pragma: no cover - Fase 3
-        raise NotImplementedError("MT5Broker.open_positions se implementa en la Fase 3")
+def build_real_mt5(
+    login: Optional[int] = None,
+    password: Optional[str] = None,
+    server: Optional[str] = None,
+    path: Optional[str] = None,
+    magic: int = 20250725,
+) -> RealMT5Client:
+    """Ayudante para crear (sin conectar) un cliente real de MT5."""
+    return RealMT5Client(login=login, password=password, server=server, path=path, magic=magic)

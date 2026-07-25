@@ -49,12 +49,30 @@ pruebas automáticas y documentar.
 - El backtester reconstruye el `MarketData` por remuestreo en cada paso (O(n²)).
   Para históricos largos conviene un remuestreo incremental/cacheado (Fase 3).
 
-## 🔜 Fase 3 — Conexión real MetaTrader 5
+## ✅ Fase 3 — Conexión MetaTrader 5 (ENTREGADA)
 
-- [ ] `MT5Connector` (adapter) con reconexión y control de errores.
-- [ ] `MT5Broker` (envío de órdenes, SL/TP, trailing, cierre parcial).
-- [ ] Gestión de sesión, spread y horario; modo *live* vs *paper*.
-- [ ] Pruebas en cuenta demo.
+- [x] Interfaz `MT5Client` (Adapter + DI) que aísla toda la API de MT5, con dos
+      implementaciones: `RealMT5Client` (adapter sobre el paquete `MetaTrader5`,
+      import perezoso, reconexión con backoff) y `SimulatedMT5Client` (terminal
+      en memoria que corre y se testea en cualquier SO).
+- [x] `MT5Broker` (envío de órdenes a mercado, SL/TP, `modify` para
+      trailing/break-even, cierre) y `MT5DataFeed` (velas multi-timeframe + tick),
+      ambos sobre la interfaz.
+- [x] `MarketGuard`: spread máximo, horario UTC (con ventanas que cruzan
+      medianoche) y bloqueo de fin de semana.
+- [x] `LiveTrader`: orquestador de un ciclo live/paper (gestión de abiertas →
+      guardián → decisión → apertura dimensionada por riesgo). Regla de
+      trailing/BE compartida (`risk/management.py`) entre agente y live trader.
+- [x] Demo `examples/run_live_paper.py` (sesión paper reproducible sin terminal)
+      y 24 tests nuevos (93 en total).
+
+> Nota honesta: el paquete `MetaTrader5` es **solo-Windows** y no puede
+> ejecutarse en este entorno Linux, así que las llamadas al terminal en
+> `RealMT5Client` están marcadas `# pragma: no cover`. Toda la lógica (traducción
+> dominio↔MT5, broker, feed, guardián, live trader, trailing) se valida con
+> `SimulatedMT5Client`. **Pendiente en el usuario:** ejecutar el mismo código con
+> `RealMT5Client.connect()` en una **cuenta demo** de Windows para validación
+> end-to-end contra un broker real.
 
 ## 🔜 Fase 4 — Inteligencia (Machine Learning)
 

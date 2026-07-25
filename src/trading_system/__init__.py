@@ -16,11 +16,13 @@ from .core import (  # noqa: E402
     register_agent,
 )
 from .engine import TradingEngine  # noqa: E402
+from .live import LiveTrader  # noqa: E402
 from .supervisor import Supervisor  # noqa: E402
 
 __all__ = [
     "__version__",
     "TradingEngine",
+    "LiveTrader",
     "Supervisor",
     "BaseAgent",
     "AgentDecision",

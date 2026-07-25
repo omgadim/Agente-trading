@@ -64,10 +64,11 @@ src/trading_system/
 ├── agents/        # agentes especializados (+ scaffolds de fases futuras)
 ├── supervisor/    # Supervisor + estrategias de ponderación
 ├── risk/          # RiskManager (sizing + veto)
-├── execution/     # broker interface, PaperBroker, MT5Broker (Fase 3)
+├── execution/     # broker/feed MT5 (interfaz MT5Client), guards, PaperBroker
 ├── backtest/      # backtester walk-forward + métricas
 ├── utils/         # logging, config
-└── engine.py      # fachada TradingEngine
+├── engine.py      # fachada TradingEngine (backtest/decisión)
+└── live.py        # LiveTrader (operativa en vivo / paper)
 integrations/
 ├── pine/          # Pine Script v6 (visualización TradingView)
 └── dashboard/     # PHP + MySQL (Fase 6)
@@ -80,11 +81,16 @@ integrations/
 - **Fase 2 ✅** — motor compartido de estructura/liquidez + 6 agentes Smart Money
   (SMC, Order Blocks, FVG, Liquidity Sweeps, Wyckoff, Harmonic) + backtester
   walk-forward con métricas (winrate, PF, expectancy, max drawdown, Sharpe).
+- **Fase 3 ✅** — conexión MetaTrader 5 vía interfaz `MT5Client` (adapter real +
+  cliente simulado), `MT5Broker`/`MT5DataFeed`, `MarketGuard` (spread/horario) y
+  `LiveTrader` (gestión de posiciones + trailing/break-even). Sesión paper
+  reproducible: `python -m examples.run_live_paper`.
 
 **17 agentes reales** operativos y 4 scaffolds (Elliott, Correlación, Noticias,
-ML) para fases posteriores. Los backtests actuales usan **datos simulados** —
-validan la mecánica, no un *edge* real; la validación con datos reales llega en
-la Fase 3. Ver [`docs/ROADMAP.md`](docs/ROADMAP.md).
+ML) para fases posteriores. Backtests y sesión paper usan **datos simulados** —
+validan la mecánica, no un *edge* real. La validación end-to-end contra un broker
+requiere ejecutar `RealMT5Client` en una **cuenta demo** de Windows (el paquete
+`MetaTrader5` es solo-Windows). Ver [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## ⚠️ Aviso
 

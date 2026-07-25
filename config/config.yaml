@@ -11,6 +11,28 @@ risk:
   max_lot: 50.0
   lot_step: 0.01
 
+# Conexión MetaTrader 5 (Fase 3). Credenciales por variables de entorno
+# (MT5_LOGIN/MT5_PASSWORD/MT5_SERVER); NO poner secretos aquí.
+mt5:
+  enabled: false          # true para operar en vivo con RealMT5Client
+  path: null              # ruta al terminal64.exe (opcional)
+  magic: 20250725
+  filling: IOC            # IOC | FOK
+  bars: 500               # nº de velas por timeframe a solicitar
+
+# Guardián de mercado (condiciones de ejecución en vivo)
+guards:
+  max_spread: 0.60        # spread máximo aceptable en precio (USD); null = sin límite
+  allow_weekend: false
+  trading_hours:          # ventanas UTC permitidas [inicio, fin); vacío = sin límite
+    - [7, 16]             # Londres + solape de Nueva York
+
+# Operativa en vivo
+live:
+  max_positions: 1
+  be_trigger: 1.0         # ATR de beneficio para mover a break-even
+  trail_trigger: 2.0      # ATR de beneficio para activar trailing
+
 # Supervisor central
 supervisor:
   weighting: adaptive        # static | adaptive
