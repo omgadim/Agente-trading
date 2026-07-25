@@ -1,0 +1,84 @@
+//@version=6
+// =============================================================================
+//  Multiagent Confluence — XAUUSD
+//  Réplica visual (TradingView) de varios agentes del sistema Python:
+//   - Trend MTF (alineación de EMAs)
+//   - Momentum (ROC / RSI)
+//   - Volatilidad (ATR)
+//   - Estructura de mercado (swings HH/HL vs LH/LL)
+//  Produce una "puntuación de confluencia" análoga al score del Supervisor.
+//  Uso: validación visual y confirmación discrecional. NO es señal automática.
+// =============================================================================
+indicator("Multiagent Confluence — XAUUSD", overlay = true)
+
+// ---- Inputs -----------------------------------------------------------------
+emaFastLen = input.int(20, "EMA rápida", minval = 1)
+emaSlowLen = input.int(50, "EMA lenta", minval = 1)
+rsiLen     = input.int(14, "RSI período")
+atrLen     = input.int(14, "ATR período")
+pivotLen   = input.int(3,  "Fuerza de pivote (swings)")
+buyThresh  = input.float(0.15, "Umbral de score", step = 0.05)
+
+// ---- Agente de Tendencia (multi-timeframe) ----------------------------------
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+trendCur = emaFast > emaSlow ? 1.0 : -1.0
+
+htf = timeframe.period == "60"  ? "240" : "60"
+emaFastHTF = request.security(syminfo.tickerid, htf, ta.ema(close, emaFastLen))
+emaSlowHTF = request.security(syminfo.tickerid, htf, ta.ema(close, emaSlowLen))
+trendHTF = emaFastHTF > emaSlowHTF ? 1.0 : -1.0
+trendScore = (trendCur + 1.5 * trendHTF) / 2.5   // ponderado hacia el TF superior
+
+// ---- Agente de Momentum -----------------------------------------------------
+rsi = ta.rsi(close, rsiLen)
+momScore = rsi > 55 ? 1.0 : rsi < 45 ? -1.0 : 0.0
+
+// ---- Agente de Volatilidad --------------------------------------------------
+atr = ta.atr(atrLen)
+atrPct = atr / close * 100.0
+volHigh = atrPct > ta.sma(atrPct, 100) * 1.4
+
+// ---- Agente de Estructura (swings) ------------------------------------------
+ph = ta.pivothigh(high, pivotLen, pivotLen)
+pl = ta.pivotlow(low, pivotLen, pivotLen)
+var float lastPH = na
+var float prevPH = na
+var float lastPL = na
+var float prevPL = na
+if not na(ph)
+    prevPH := lastPH
+    lastPH := ph
+if not na(pl)
+    prevPL := lastPL
+    lastPL := pl
+bullStruct = not na(lastPH) and not na(prevPH) and not na(lastPL) and not na(prevPL) and lastPH > prevPH and lastPL > prevPL
+bearStruct = not na(lastPH) and not na(prevPH) and not na(lastPL) and not na(prevPL) and lastPH < prevPH and lastPL < prevPL
+structScore = bullStruct ? 1.0 : bearStruct ? -1.0 : 0.0
+
+// ---- Supervisor (confluencia ponderada) -------------------------------------
+w_trend  = 1.5
+w_mom    = 1.0
+w_struct = 1.4
+score = (w_trend * trendScore + w_mom * momScore + w_struct * structScore) / (w_trend + w_mom + w_struct)
+// Penaliza volatilidad extrema (como el veto del agente de riesgo).
+scoreAdj = volHigh ? score * 0.5 : score
+
+isBuy  = scoreAdj >  buyThresh
+isSell = scoreAdj < -buyThresh
+
+// ---- Visualización ----------------------------------------------------------
+plot(emaFast, "EMA rápida", color = color.new(color.orange, 0))
+plot(emaSlow, "EMA lenta",  color = color.new(color.blue, 0))
+bgcolor(isBuy ? color.new(color.green, 85) : isSell ? color.new(color.red, 85) : na)
+plotshape(isBuy  and not isBuy[1],  title = "BUY",  style = shape.triangleup,   location = location.belowbar, color = color.green, size = size.small)
+plotshape(isSell and not isSell[1], title = "SELL", style = shape.triangledown, location = location.abovebar, color = color.red,   size = size.small)
+
+// ---- Panel de score ---------------------------------------------------------
+var table panel = table.new(position.top_right, 1, 2, border_width = 1)
+if barstate.islast
+    table.cell(panel, 0, 0, "Confluencia", bgcolor = color.gray, text_color = color.white)
+    table.cell(panel, 0, 1, str.tostring(scoreAdj, "#.##"), bgcolor = isBuy ? color.green : isSell ? color.red : color.gray, text_color = color.white)
+
+alertcondition(isBuy  and not isBuy[1],  "Confluencia BUY",  "Confluencia alcista en XAUUSD")
+alertcondition(isSell and not isSell[1], "Confluencia SELL", "Confluencia bajista en XAUUSD")

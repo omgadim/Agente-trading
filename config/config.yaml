@@ -1,0 +1,58 @@
+# Configuración del sistema de trading multiagente (XAUUSD)
+symbol: XAUUSD
+
+# Gestión de riesgo (ver risk/risk_manager.py::RiskParameters)
+risk:
+  account_balance: 10000.0
+  risk_per_trade_pct: 1.0
+  max_daily_loss_pct: 5.0
+  contract_size: 100.0
+  min_lot: 0.01
+  max_lot: 50.0
+  lot_step: 0.01
+
+# Supervisor central
+supervisor:
+  weighting: adaptive        # static | adaptive
+  base_weight: 1.0
+  learning_rate: 0.1
+  buy_threshold: 0.15        # zona muerta del score para pasar a BUY/SELL
+  conflict_threshold: 0.5    # acuerdo mínimo del conjunto; por debajo => WAIT
+  # Pesos usados solo en modo 'static':
+  weights:
+    trend_mtf: 1.5
+    technical: 1.2
+    market_structure: 1.4
+
+# Agentes activos. Cada bloque se pasa como `config` al agente.
+agents:
+  trend_mtf:
+    ema_fast: 20
+    ema_slow: 50
+  momentum:
+    roc_period: 10
+    threshold_pct: 0.15
+  technical: {}
+  volatility: {}
+  volume: {}
+  market_structure: {}
+  support_resistance: {}
+  candlestick: {}
+  session: {}
+  risk_management:
+    max_atr_pct: 2.5
+    sl_mult: 1.5
+    tp_mult: 2.5
+  open_trades_control: {}
+
+  # --- Agentes planificados (scaffold: devuelven WAIT hasta su fase) ---
+  smart_money: { enabled: false }
+  order_blocks: { enabled: false }
+  fair_value_gap: { enabled: false }
+  liquidity_sweep: { enabled: false }
+  wyckoff: { enabled: false }
+  harmonic: { enabled: false }
+  elliott: { enabled: false }
+  correlation: { enabled: false }
+  news: { enabled: false }
+  machine_learning: { enabled: false }

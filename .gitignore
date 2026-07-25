@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Tests / cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Config sensible / entorno
+.env
+*.local.yaml
+
+# Datos y logs
+*.log
+data/
+logs/
+*.csv
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
