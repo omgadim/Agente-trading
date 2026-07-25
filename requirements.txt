@@ -11,6 +11,10 @@ xgboost>=2.0
 # Desarrollo / tests
 pytest>=7.4
 
+# Persistencia MySQL (Fase 6). Opcional: el backend por defecto es SQLite
+# (librería estándar). Necesario solo para el dashboard PHP en producción.
+# PyMySQL>=1.1
+
 # --- Fases posteriores (descomentar cuando corresponda) ---
 # MetaTrader5>=5.0        # Fase 3 (solo Windows con terminal MT5)
 # tensorflow>=2.15        # Fase 4 (LSTM secuencial) — o torch como alternativa

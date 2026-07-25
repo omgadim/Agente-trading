@@ -44,6 +44,7 @@ class LiveTrader:
         max_positions: int = 1,
         be_trigger: float = 1.0,
         trail_trigger: float = 2.0,
+        repository=None,
     ) -> None:
         self.feed = feed
         self.broker = broker
@@ -54,6 +55,7 @@ class LiveTrader:
         self.max_positions = max_positions
         self.be_trigger = be_trigger
         self.trail_trigger = trail_trigger
+        self.repository = repository
         self.logger = logging.getLogger("live")
 
     def step(self) -> LiveStepResult:
@@ -98,7 +100,22 @@ class LiveTrader:
         result.opened = self.broker.open(order)
         self.logger.info("Entrada %s @ %.2f vol=%.2f", decision.signal.value,
                          order.price, order.volume)
+        self._persist(decision, md, order)
         return result
+
+    def _persist(self, decision, md, order: Order) -> None:
+        """Persiste la decisión y la apertura (si hay repositorio).
+
+        La conciliación del cierre en vivo (consultar el historial de deals del
+        broker) queda para la Fase 7; aquí se registran decisión y apertura.
+        """
+        if self.repository is None:
+            return
+        decision_id = self.repository.save_decision(decision, self.symbol, md.regime.key)
+        self.repository.open_trade(
+            self.symbol, order.direction.value, order.volume, order.price,
+            order.stop_loss, order.take_profit, decision_id=decision_id, ticket=order.ticket,
+        )
 
     def _manage(self, positions: List[Order], price: float, atr: float) -> List[Dict[str, Any]]:
         if not positions:

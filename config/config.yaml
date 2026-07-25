@@ -20,6 +20,14 @@ mt5:
   filling: IOC            # IOC | FOK
   bars: 500               # nº de velas por timeframe a solicitar
 
+# Persistencia (Fase 6). backend sqlite (local/tests) o mysql (producción,
+# mismas tablas que lee el dashboard PHP). Credenciales MySQL por variables
+# de entorno DB_* (ver .env.example).
+persistence:
+  enabled: false
+  backend: sqlite         # sqlite | mysql
+  sqlite_path: data/trading.db
+
 # Guardián de mercado (condiciones de ejecución en vivo)
 guards:
   max_spread: 0.60        # spread máximo aceptable en precio (USD); null = sin límite

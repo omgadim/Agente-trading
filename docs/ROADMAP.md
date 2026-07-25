@@ -124,11 +124,27 @@ pruebas automáticas y documentar.
 > COT/sentiment) se conectan a esas mismas interfaces. `SentimentAgent` se añade
 > como agente extra (#22) más allá de los 20 originales.
 
-## 🔜 Fase 6 — Persistencia y Dashboard
+## ✅ Fase 6 — Persistencia y Dashboard (ENTREGADA)
 
-- [ ] Esquema MySQL + capa de persistencia de decisiones/operaciones.
-- [ ] Dashboard PHP: estado en vivo, historial, desempeño por agente, PnL.
-- [ ] Pine Script v6: indicadores de visualización sincronizados.
+- [x] Capa de persistencia (`persistence/`) con patrón Repository: interfaz única
+      y dos backends sobre el mismo SQL — `SqliteRepository` (stdlib, por defecto,
+      testeable en cualquier entorno) y `MySQLRepository` (producción, PyMySQL con
+      import perezoso) que escribe en las **mismas tablas** que lee el panel PHP.
+- [x] Persistencia de decisiones del Supervisor, aportes por agente, operaciones
+      (apertura/cierre) y desempeño por agente/régimen.
+- [x] Integración: `Backtester(repository=...)` persiste el ciclo de vida completo
+      (decisión → apertura → cierre → desempeño); `LiveTrader(repository=...)`
+      persiste decisión y apertura en vivo.
+- [x] Dashboard PHP ampliado (`integrations/dashboard`): KPIs de PnL, desempeño
+      por agente con barras, últimas decisiones y operaciones, auto-refresco.
+- [x] Demo `examples/run_persistence_demo.py` (puebla una BD SQLite) y 7 tests
+      nuevos (132 en total).
+
+> El backend SQLite hace la persistencia ejecutable y testeable aquí; el panel
+> PHP consume MySQL en producción con las mismas tablas (`MySQLRepository`
+> requiere `pip install pymysql` y un servidor MySQL). Pine Script v6 de
+> visualización se entregó en la Fase 1 (`integrations/pine`); su sincronización
+> en vivo (alertas/webhooks → backend) es un refinamiento de la Fase 7.
 
 ## 🔜 Fase 7 — Endurecimiento y despliegue
 

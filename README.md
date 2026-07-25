@@ -67,6 +67,7 @@ src/trading_system/
 ├── execution/     # broker/feed MT5 (interfaz MT5Client), guards, PaperBroker
 ├── ml/            # features, modelos (logística/GB/XGBoost), walk-forward
 ├── context/       # proveedores externos: noticias, correlación, sentimiento
+├── persistence/   # Repository (SQLite/MySQL) de decisiones/operaciones
 ├── backtest/      # backtester walk-forward + métricas
 ├── utils/         # logging, config
 ├── engine.py      # fachada TradingEngine (backtest/decisión)
@@ -95,6 +96,9 @@ integrations/
 - **Fase 5 ✅** — Contexto externo con proveedores inyectables: `NewsAgent`
   (veto por calendario económico), `CorrelationAgent` (DXY/US10Y/SPX) y
   `SentimentAgent` (contrarian retail). Demo: `python -m examples.run_context_demo`.
+- **Fase 6 ✅** — Persistencia (patrón Repository, SQLite/MySQL) de decisiones,
+  operaciones y desempeño por agente/régimen; dashboard PHP con KPIs y desempeño.
+  Demo: `python -m examples.run_persistence_demo`.
 
 **21 agentes reales** operativos y 1 scaffold (Elliott). Backtests, sesión paper
 y ML usan **datos simulados** — validan la mecánica y el pipeline, no un *edge*

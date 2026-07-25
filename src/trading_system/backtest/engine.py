@@ -31,6 +31,7 @@ class Trade:
     exit_pos: Optional[int] = None
     pnl: Optional[float] = None
     reason: Optional[str] = None
+    db_id: Optional[int] = None  # id en la base de datos (si hay persistencia)
 
 
 @dataclass
@@ -65,6 +66,7 @@ class Backtester:
         initial_equity: float = 10_000.0,
         spread: float = 0.2,
         learn: bool = False,
+        repository=None,
     ) -> None:
         self.supervisor = supervisor
         self.symbol = symbol
@@ -76,6 +78,7 @@ class Backtester:
         self.initial_equity = initial_equity
         self.spread = spread
         self.learn = learn
+        self.repository = repository
         self.logger = logging.getLogger("backtest")
 
     def run(self, base_df: pd.DataFrame) -> BacktestResult:
@@ -104,9 +107,13 @@ class Backtester:
                     trades.append(open_trade)
                     equity += open_trade.pnl
                     equity_curve.append(equity)
-                    if self.learn and pending_feedback:
-                        decisions, md = pending_feedback.pop()
-                        self.supervisor.feedback(decisions, md, open_trade.pnl > 0)
+                    self._persist_close(open_trade)
+                    if pending_feedback:
+                        decisions, fb_md = pending_feedback.pop()
+                        profitable = open_trade.pnl > 0
+                        if self.learn:
+                            self.supervisor.feedback(decisions, fb_md, profitable)
+                        self._persist_performance(decisions, fb_md.regime.key, profitable)
                     open_trade = None
 
             # 2) Si estamos planos, evaluar una nueva decisión.
@@ -130,7 +137,8 @@ class Backtester:
                         take_profit=decision.take_profit,
                         size=decision.position_size or 0.1,
                     )
-                    if self.learn:
+                    self._persist_open(open_trade, decision, md.regime.key)
+                    if self.learn or self.repository is not None:
                         pending_feedback.append((decision.contributing, md))
 
             i += self.step
@@ -144,10 +152,33 @@ class Backtester:
             trades.append(open_trade)
             equity += open_trade.pnl
             equity_curve.append(equity)
+            self._persist_close(open_trade)
 
         pnls = [t.pnl for t in trades if t.pnl is not None]
         metrics = compute_metrics(pnls, equity_curve)
         return BacktestResult(trades, equity_curve, metrics, self.initial_equity)
+
+    # ---- persistencia (opcional) ----------------------------------------
+    def _persist_open(self, trade: Trade, decision, regime: str) -> None:
+        if self.repository is None:
+            return
+        decision_id = self.repository.save_decision(decision, self.symbol, regime)
+        trade.db_id = self.repository.open_trade(
+            self.symbol, trade.direction.value, trade.size, trade.entry_price,
+            trade.stop_loss, trade.take_profit, decision_id=decision_id,
+        )
+
+    def _persist_close(self, trade: Trade) -> None:
+        if self.repository is None or trade.db_id is None:
+            return
+        self.repository.close_trade(trade.db_id, trade.exit_price, trade.pnl)
+
+    def _persist_performance(self, decisions, regime: str, profitable: bool) -> None:
+        if self.repository is None:
+            return
+        for d in decisions:
+            if d.signal is not SignalType.WAIT:
+                self.repository.update_agent_performance(d.agent_name, regime, profitable)
 
     # ---- internos --------------------------------------------------------
     def _try_close(self, trade: Trade, bar_high: float, bar_low: float, pos: int) -> bool:
