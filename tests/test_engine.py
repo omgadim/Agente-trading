@@ -21,7 +21,8 @@ def test_engine_runs_full_cycle():
     # Deben haber corrido los agentes reales + scaffolds deshabilitados excluidos.
     names = {d.agent_name for d in decision.contributing}
     assert "trend_mtf" in names
-    assert "smart_money" not in names  # deshabilitado en config
+    assert "smart_money" in names            # agente de Fase 2, activo en config
+    assert "machine_learning" not in names   # scaffold deshabilitado en config
 
 
 def test_engine_execute_opens_paper_position():

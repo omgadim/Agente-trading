@@ -24,12 +24,30 @@ pruebas automáticas y documentar.
 - [x] `DataFeed` (interface) + `SimulatedDataFeed` para tests/backtest.
 - [x] Logging, configuración YAML, tests `pytest`.
 
-## 🔜 Fase 2 — Agentes Smart Money y Price Action
+## ✅ Fase 2 — Agentes Smart Money y Price Action (ENTREGADA)
 
-- [ ] Implementar SMC, OrderBlocks, FVG, LiquiditySweeps, Wyckoff, Harmonic.
-- [ ] Motor de detección de swings y liquidez compartido.
-- [ ] Backtester con métricas (winrate, PF, expectancy, max drawdown).
-- [ ] Tests de cada detector con velas sintéticas de referencia.
+- [x] Motor compartido de estructura y liquidez (`data/structure.py`): swings,
+      estructura (BOS/CHoCH), FVG, Order Blocks, pools de liquidez, sweeps,
+      zigzag alternado y zonas premium/discount.
+- [x] 6 agentes reales que reemplazan sus scaffolds: `smart_money` (confluencia
+      estructura + premium/discount), `order_blocks`, `fair_value_gap`,
+      `liquidity_sweep`, `wyckoff` (spring/upthrust), `harmonic`
+      (Gartley/Bat/Butterfly/Crab por ratios de Fibonacci).
+- [x] Backtester walk-forward (`backtest/`) con SL/TP, sin *look-ahead*, y
+      métricas: winrate, profit factor, expectancy, PnL neto, max drawdown,
+      Sharpe. Soporta retroalimentar la ponderación adaptativa (`learn=True`).
+- [x] Tests de cada detector con velas sintéticas de referencia + tests del
+      backtester y las métricas (69 tests en total).
+
+> Nota honesta: el backtest actual corre sobre **datos simulados**; sirve para
+> validar la mecánica (ejecución, métricas, ausencia de look-ahead), NO para
+> afirmar que existe *edge*. La validación con datos reales de MT5 llega en la
+> Fase 3, y la robustez out-of-sample (walk-forward sobre histórico real) es un
+> criterio de cierre transversal.
+
+### Optimización pendiente (deuda técnica reconocida)
+- El backtester reconstruye el `MarketData` por remuestreo en cada paso (O(n²)).
+  Para históricos largos conviene un remuestreo incremental/cacheado (Fase 3).
 
 ## 🔜 Fase 3 — Conexión real MetaTrader 5
 

@@ -1,0 +1,176 @@
+"""Backtester walk-forward para el sistema multiagente.
+
+Recorre una serie histórica barra a barra, reconstruye el `MarketData`
+multi-timeframe hasta cada barra, pide la decisión al Supervisor y simula la
+operación con SL/TP. Gestiona una posición a la vez (modelo simple y honesto) y
+evita *look-ahead*: la decisión en la barra i solo usa datos hasta i.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+import pandas as pd
+
+from ..core import SignalType, Timeframe
+from ..data import build_market_data
+from ..supervisor import Supervisor
+from .metrics import compute_metrics
+
+
+@dataclass
+class Trade:
+    direction: SignalType
+    entry_price: float
+    entry_pos: int
+    stop_loss: float
+    take_profit: float
+    size: float
+    exit_price: Optional[float] = None
+    exit_pos: Optional[int] = None
+    pnl: Optional[float] = None
+    reason: Optional[str] = None
+
+
+@dataclass
+class BacktestResult:
+    trades: List[Trade]
+    equity_curve: List[float]
+    metrics: Dict[str, float]
+    initial_equity: float
+
+    def summary(self) -> str:
+        m = self.metrics
+        return (
+            f"Operaciones: {m['trades']} | Winrate: {m['winrate']}% | "
+            f"PF: {m['profit_factor']} | Expectancy: {m['expectancy']} | "
+            f"PnL neto: {m['net_pnl']} | MaxDD: {m['max_drawdown']} | "
+            f"Sharpe: {m['sharpe']}"
+        )
+
+
+class Backtester:
+    """Motor de backtesting walk-forward sobre una serie del timeframe base."""
+
+    def __init__(
+        self,
+        supervisor: Supervisor,
+        symbol: str = "XAUUSD",
+        contract_size: float = 100.0,
+        base_minutes: int = 5,
+        warmup: int = 200,
+        step: int = 3,
+        timeframes=(Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4),
+        initial_equity: float = 10_000.0,
+        spread: float = 0.2,
+        learn: bool = False,
+    ) -> None:
+        self.supervisor = supervisor
+        self.symbol = symbol
+        self.contract_size = contract_size
+        self.base_minutes = base_minutes
+        self.warmup = warmup
+        self.step = max(1, step)
+        self.timeframes = timeframes
+        self.initial_equity = initial_equity
+        self.spread = spread
+        self.learn = learn
+        self.logger = logging.getLogger("backtest")
+
+    def run(self, base_df: pd.DataFrame) -> BacktestResult:
+        n = len(base_df)
+        if n <= self.warmup + self.step:
+            raise ValueError("Serie demasiado corta para el warmup indicado")
+
+        high = base_df["high"].to_numpy()
+        low = base_df["low"].to_numpy()
+        close = base_df["close"].to_numpy()
+
+        equity = self.initial_equity
+        equity_curve: List[float] = [equity]
+        trades: List[Trade] = []
+        open_trade: Optional[Trade] = None
+        pending_feedback: List = []
+
+        i = self.warmup
+        while i < n:
+            price = float(close[i])
+
+            # 1) Gestionar posición abierta: ¿toca SL/TP en esta barra?
+            if open_trade is not None:
+                closed = self._try_close(open_trade, high[i], low[i], i)
+                if closed:
+                    trades.append(open_trade)
+                    equity += open_trade.pnl
+                    equity_curve.append(equity)
+                    if self.learn and pending_feedback:
+                        decisions, md = pending_feedback.pop()
+                        self.supervisor.feedback(decisions, md, open_trade.pnl > 0)
+                    open_trade = None
+
+            # 2) Si estamos planos, evaluar una nueva decisión.
+            if open_trade is None:
+                window = base_df.iloc[: i + 1]
+                md = build_market_data(
+                    window, self.symbol, self.base_minutes, self.timeframes, self.spread
+                )
+                decision = self.supervisor.decide(md)
+                if (
+                    decision.signal in (SignalType.BUY, SignalType.SELL)
+                    and not decision.vetoed
+                    and decision.stop_loss
+                    and decision.take_profit
+                ):
+                    open_trade = Trade(
+                        direction=decision.signal,
+                        entry_price=price,
+                        entry_pos=i,
+                        stop_loss=decision.stop_loss,
+                        take_profit=decision.take_profit,
+                        size=decision.position_size or 0.1,
+                    )
+                    if self.learn:
+                        pending_feedback.append((decision.contributing, md))
+
+            i += self.step
+
+        # Cerrar posición residual al último precio.
+        if open_trade is not None:
+            open_trade.exit_price = float(close[-1])
+            open_trade.exit_pos = n - 1
+            open_trade.pnl = self._pnl(open_trade, open_trade.exit_price)
+            open_trade.reason = "fin de serie"
+            trades.append(open_trade)
+            equity += open_trade.pnl
+            equity_curve.append(equity)
+
+        pnls = [t.pnl for t in trades if t.pnl is not None]
+        metrics = compute_metrics(pnls, equity_curve)
+        return BacktestResult(trades, equity_curve, metrics, self.initial_equity)
+
+    # ---- internos --------------------------------------------------------
+    def _try_close(self, trade: Trade, bar_high: float, bar_low: float, pos: int) -> bool:
+        """Cierra la operación si la barra alcanza SL o TP. SL tiene prioridad."""
+        if trade.direction is SignalType.BUY:
+            if bar_low <= trade.stop_loss:
+                return self._close(trade, trade.stop_loss, pos, "SL")
+            if bar_high >= trade.take_profit:
+                return self._close(trade, trade.take_profit, pos, "TP")
+        else:  # SELL
+            if bar_high >= trade.stop_loss:
+                return self._close(trade, trade.stop_loss, pos, "SL")
+            if bar_low <= trade.take_profit:
+                return self._close(trade, trade.take_profit, pos, "TP")
+        return False
+
+    def _close(self, trade: Trade, price: float, pos: int, reason: str) -> bool:
+        trade.exit_price = price
+        trade.exit_pos = pos
+        trade.reason = reason
+        trade.pnl = self._pnl(trade, price)
+        return True
+
+    def _pnl(self, trade: Trade, exit_price: float) -> float:
+        direction = 1 if trade.direction is SignalType.BUY else -1
+        return (exit_price - trade.entry_price) * direction * trade.size * self.contract_size

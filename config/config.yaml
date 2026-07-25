@@ -45,13 +45,19 @@ agents:
     tp_mult: 2.5
   open_trades_control: {}
 
+  # --- Fase 2: Smart Money / Price Action (implementados) ---
+  smart_money:
+    lookback: 50
+  order_blocks:
+    impulse_atr: 1.0
+  fair_value_gap:
+    min_atr_frac: 0.25
+  liquidity_sweep: {}
+  wyckoff:
+    lookback: 30
+  harmonic: {}
+
   # --- Agentes planificados (scaffold: devuelven WAIT hasta su fase) ---
-  smart_money: { enabled: false }
-  order_blocks: { enabled: false }
-  fair_value_gap: { enabled: false }
-  liquidity_sweep: { enabled: false }
-  wyckoff: { enabled: false }
-  harmonic: { enabled: false }
   elliott: { enabled: false }
   correlation: { enabled: false }
   news: { enabled: false }

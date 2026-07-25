@@ -18,10 +18,11 @@ htmlcov/
 .env
 *.local.yaml
 
-# Datos y logs
+# Datos y logs (solo directorios en la raíz del proyecto; NO el paquete
+# src/trading_system/data/, que es código fuente)
 *.log
-data/
-logs/
+/data/
+/logs/
 *.csv
 
 # IDE / OS

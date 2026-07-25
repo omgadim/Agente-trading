@@ -4,6 +4,9 @@ Cada uno se registra (para que el sistema los liste y el Supervisor pueda
 ponderarlos en el futuro) pero, honestamente, devuelve WAIT con confianza 0 y una
 explicación de su plan. Se implementarán en las fases indicadas del ROADMAP. Esto
 mantiene el catálogo completo sin fingir capacidades que aún no existen.
+
+Los agentes Smart Money / Price Action (SMC, Order Blocks, FVG, Liquidity Sweeps,
+Wyckoff, Harmonic) ya están implementados en `smart_money_agents.py` (Fase 2).
 """
 from __future__ import annotations
 
@@ -27,46 +30,10 @@ class _PlannedAgent(BaseAgent):
         )
 
 
-@register_agent("smart_money")
-class SmartMoneyConceptsAgent(_PlannedAgent):
-    category = "smart_money"; phase = "2"
-    idea = "Premium/Discount e imbalance institucional"
-
-
-@register_agent("order_blocks")
-class OrderBlocksAgent(_PlannedAgent):
-    category = "smart_money"; phase = "2"
-    idea = "Order blocks (última vela contraria antes del impulso)"
-
-
-@register_agent("fair_value_gap")
-class FairValueGapAgent(_PlannedAgent):
-    category = "smart_money"; phase = "2"
-    idea = "Fair Value Gaps / imbalances de 3 velas"
-
-
-@register_agent("liquidity_sweep")
-class LiquiditySweepAgent(_PlannedAgent):
-    category = "smart_money"; phase = "2"
-    idea = "Barridos de liquidez (stop hunts) sobre highs/lows"
-
-
-@register_agent("wyckoff")
-class WyckoffAgent(_PlannedAgent):
-    category = "smart_money"; phase = "2"
-    idea = "Fases de acumulación/distribución, springs/upthrusts"
-
-
-@register_agent("harmonic")
-class HarmonicPatternAgent(_PlannedAgent):
-    category = "price_action"; phase = "2"
-    idea = "Patrones armónicos (Gartley/Bat/Butterfly) por ratios de Fibonacci"
-
-
 @register_agent("elliott")
 class ElliottWaveAgent(_PlannedAgent):
-    category = "price_action"; phase = "2"
-    idea = "Conteo de ondas de Elliott (impulsivas/correctivas)"
+    category = "price_action"; phase = "2+"
+    idea = "Conteo de ondas de Elliott (impulsivas/correctivas) — requiere validación"
 
 
 @register_agent("correlation")

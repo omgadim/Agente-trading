@@ -32,7 +32,10 @@ agente nuevo no requiere tocar el Supervisor.
 pip install -r requirements.txt
 
 # Ejecuta un ciclo de decisión con datos simulados
-python -m examples.run_demo
+PYTHONPATH=src python -m examples.run_demo
+
+# Backtest walk-forward del sistema completo (con métricas)
+PYTHONPATH=src python -m examples.run_backtest
 ```
 
 ```python
@@ -57,11 +60,12 @@ PYTHONPATH=src pytest        # o simplemente: pytest (configurado en pyproject)
 ```
 src/trading_system/
 ├── core/          # contratos: AgentDecision, BaseAgent, registry, enums
-├── data/          # indicadores + feeds (simulado; MT5 en Fase 3)
+├── data/          # indicadores + motor de estructura/liquidez + feeds
 ├── agents/        # agentes especializados (+ scaffolds de fases futuras)
 ├── supervisor/    # Supervisor + estrategias de ponderación
 ├── risk/          # RiskManager (sizing + veto)
 ├── execution/     # broker interface, PaperBroker, MT5Broker (Fase 3)
+├── backtest/      # backtester walk-forward + métricas
 ├── utils/         # logging, config
 └── engine.py      # fachada TradingEngine
 integrations/
@@ -71,10 +75,16 @@ integrations/
 
 ## 🧠 Estado
 
-**Fase 1 entregada**: núcleo + 11 agentes reales + Supervisor con ponderación
-adaptativa + gestión de riesgo + tests. El resto de agentes (Smart Money, ML,
-Noticias, etc.) están registrados como *scaffolds* y se implementan por fases
-(ver ROADMAP).
+- **Fase 1 ✅** — núcleo + 11 agentes reales + Supervisor con ponderación
+  adaptativa + gestión de riesgo + tests.
+- **Fase 2 ✅** — motor compartido de estructura/liquidez + 6 agentes Smart Money
+  (SMC, Order Blocks, FVG, Liquidity Sweeps, Wyckoff, Harmonic) + backtester
+  walk-forward con métricas (winrate, PF, expectancy, max drawdown, Sharpe).
+
+**17 agentes reales** operativos y 4 scaffolds (Elliott, Correlación, Noticias,
+ML) para fases posteriores. Los backtests actuales usan **datos simulados** —
+validan la mecánica, no un *edge* real; la validación con datos reales llega en
+la Fase 3. Ver [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## ⚠️ Aviso
 

@@ -60,7 +60,8 @@ def test_disabled_agent_waits(market_data):
 
 
 def test_scaffold_agent_is_planned(market_data):
-    decision = AgentRegistry.create("smart_money", {}).run(market_data)
+    # machine_learning sigue siendo scaffold (Fase 4); smart_money ya es real (Fase 2).
+    decision = AgentRegistry.create("machine_learning", {}).run(market_data)
     assert decision.signal is SignalType.WAIT
     assert decision.metadata.get("planned") is True
 
