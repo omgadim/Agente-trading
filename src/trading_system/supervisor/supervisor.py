@@ -149,12 +149,13 @@ class Supervisor:
         Un agente "acertó" si su señal direccional coincidió con el resultado
         (operación ganadora en su dirección).
         """
-        final_correct = profitable
         for d in decisions:
             if not d.is_actionable:
                 continue
-            correct = final_correct  # simplificación: alineado con el resultado global
-            self.weighting.update(d.agent_name, md.regime, correct)
+            # Un agente "acertó" si su dirección coincidió con el resultado global.
+            self.weighting.update(d.agent_name, md.regime, profitable)
+        # Retroalimentación conjunta para meta-modelos de stacking.
+        self.weighting.observe(decisions, md.regime, profitable)
 
     # ---- Internos --------------------------------------------------------
     @staticmethod

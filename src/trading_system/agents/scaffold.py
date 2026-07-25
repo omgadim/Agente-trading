@@ -5,8 +5,9 @@ ponderarlos en el futuro) pero, honestamente, devuelve WAIT con confianza 0 y un
 explicación de su plan. Se implementarán en las fases indicadas del ROADMAP. Esto
 mantiene el catálogo completo sin fingir capacidades que aún no existen.
 
-Los agentes Smart Money / Price Action (SMC, Order Blocks, FVG, Liquidity Sweeps,
-Wyckoff, Harmonic) ya están implementados en `smart_money_agents.py` (Fase 2).
+Ya implementados en fases anteriores: Smart Money / Price Action
+(`smart_money_agents.py`, Fase 2) y Machine Learning (`ml_agent.py`, Fase 4).
+Scaffolds restantes: Elliott (Fase 2+), Correlación y Noticias (Fase 5).
 """
 from __future__ import annotations
 
@@ -46,9 +47,3 @@ class CorrelationAgent(_PlannedAgent):
 class NewsAgent(_PlannedAgent):
     category = "context"; phase = "5"
     idea = "Calendario económico de alto impacto (veto/timing)"
-
-
-@register_agent("machine_learning")
-class MachineLearningAgent(_PlannedAgent):
-    category = "ml"; phase = "4"
-    idea = "LSTM (secuencial) + XGBoost (tabular) sobre features de mercado"

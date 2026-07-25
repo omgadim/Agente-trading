@@ -63,8 +63,9 @@ src/trading_system/
 ├── data/          # indicadores + motor de estructura/liquidez + feeds
 ├── agents/        # agentes especializados (+ scaffolds de fases futuras)
 ├── supervisor/    # Supervisor + estrategias de ponderación
-├── risk/          # RiskManager (sizing + veto)
+├── risk/          # RiskManager (sizing + veto) + gestión de posiciones
 ├── execution/     # broker/feed MT5 (interfaz MT5Client), guards, PaperBroker
+├── ml/            # features, modelos (logística/GB/XGBoost), walk-forward
 ├── backtest/      # backtester walk-forward + métricas
 ├── utils/         # logging, config
 ├── engine.py      # fachada TradingEngine (backtest/decisión)
@@ -85,11 +86,16 @@ integrations/
   cliente simulado), `MT5Broker`/`MT5DataFeed`, `MarketGuard` (spread/horario) y
   `LiveTrader` (gestión de posiciones + trailing/break-even). Sesión paper
   reproducible: `python -m examples.run_live_paper`.
+- **Fase 4 ✅** — Machine Learning: features sin look-ahead, modelos
+  (logística en numpy + GradientBoosting/XGBoost opcionales), validación
+  walk-forward, `MachineLearningAgent` y `MetaModelWeighting` (meta-modelo de
+  stacking que aprende el peso de cada agente por régimen). Demo:
+  `python -m examples.run_ml_train`.
 
-**17 agentes reales** operativos y 4 scaffolds (Elliott, Correlación, Noticias,
-ML) para fases posteriores. Backtests y sesión paper usan **datos simulados** —
-validan la mecánica, no un *edge* real. La validación end-to-end contra un broker
-requiere ejecutar `RealMT5Client` en una **cuenta demo** de Windows (el paquete
+**18 agentes reales** operativos y 3 scaffolds (Elliott, Correlación, Noticias)
+para fases posteriores. Backtests, sesión paper y ML usan **datos simulados** —
+validan la mecánica y el pipeline, no un *edge* real. La validación con datos
+reales requiere `RealMT5Client` en una **cuenta demo** de Windows (el paquete
 `MetaTrader5` es solo-Windows). Ver [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## ⚠️ Aviso

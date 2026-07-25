@@ -49,7 +49,7 @@ Leyenda de estado: ✅ implementado (Fase 1) · 🚧 scaffold (WAIT + TODO) · �
 
 | # | Agente | Estado | Idea central |
 |---|--------|--------|--------------|
-| 19 | `MachineLearningAgent` | 🚧🧠 | LSTM / XGBoost sobre features de mercado |
+| 19 | `MachineLearningAgent` | ✅ | Logística/XGBoost sobre features (walk-forward) |
 | 20 | `RiskManagementAgent` | ✅ | Riesgo, SL/TP por ATR, poder de veto |
 | 21 | `OpenTradesControlAgent` | ✅ | Gestión de posiciones abiertas (trailing, break-even) |
 

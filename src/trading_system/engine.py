@@ -10,6 +10,7 @@ from .execution import ExecutionBroker, Order, PaperBroker
 from .risk import RiskManager, RiskParameters
 from .supervisor import (
     AdaptiveWeighting,
+    MetaModelWeighting,
     StaticWeighting,
     Supervisor,
     WeightingStrategy,
@@ -35,10 +36,17 @@ def build_weighting(config: Dict[str, Any]) -> WeightingStrategy:
     mode = sup_cfg.get("weighting", "adaptive")
     if mode == "static":
         return StaticWeighting(sup_cfg.get("weights", {}) or {})
-    return AdaptiveWeighting(
+    adaptive = AdaptiveWeighting(
         base=sup_cfg.get("base_weight", 1.0),
         alpha=sup_cfg.get("learning_rate", 0.1),
     )
+    if mode == "meta":
+        return MetaModelWeighting(
+            fallback=adaptive,
+            base=sup_cfg.get("base_weight", 1.0),
+            warmup=sup_cfg.get("meta_warmup", 30),
+        )
+    return adaptive
 
 
 class TradingEngine:

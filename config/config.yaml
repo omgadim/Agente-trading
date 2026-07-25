@@ -35,9 +35,10 @@ live:
 
 # Supervisor central
 supervisor:
-  weighting: adaptive        # static | adaptive
+  weighting: adaptive        # static | adaptive | meta
   base_weight: 1.0
   learning_rate: 0.1
+  meta_warmup: 30            # muestras por régimen antes de que el meta-modelo pese
   buy_threshold: 0.15        # zona muerta del score para pasar a BUY/SELL
   conflict_threshold: 0.5    # acuerdo mínimo del conjunto; por debajo => WAIT
   # Pesos usados solo en modo 'static':
@@ -79,8 +80,15 @@ agents:
     lookback: 30
   harmonic: {}
 
+  # --- Fase 4: Machine Learning (implementado) ---
+  machine_learning:
+    model: logistic         # logistic (numpy) | gboosting (sklearn) | xgboost
+    horizon: 5              # barras a futuro para la etiqueta
+    margin: 0.10            # umbral de probabilidad sobre 0.5 para señalar
+    retrain_every: 50       # reentrenamiento periódico (ventana expansiva)
+    min_train: 150
+
   # --- Agentes planificados (scaffold: devuelven WAIT hasta su fase) ---
   elliott: { enabled: false }
   correlation: { enabled: false }
   news: { enabled: false }
-  machine_learning: { enabled: false }

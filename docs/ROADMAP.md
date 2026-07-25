@@ -74,13 +74,32 @@ pruebas automáticas y documentar.
 > `RealMT5Client.connect()` en una **cuenta demo** de Windows para validación
 > end-to-end contra un broker real.
 
-## 🔜 Fase 4 — Inteligencia (Machine Learning)
+## ✅ Fase 4 — Inteligencia (Machine Learning) (ENTREGADA)
 
-- [ ] `MachineLearningAgent`: features engineering + LSTM (secuencial) y XGBoost
-      (tabular). Validación *walk-forward*, sin *look-ahead*.
-- [ ] `MetaModelWeighting`: meta-modelo (stacking) que aprende qué agentes
-      aciertan por régimen → pesos del Supervisor.
-- [ ] Registro de features/decisiones para reentrenamiento continuo.
+- [x] Ingeniería de features backward-looking (`ml/features.py`): retornos, RSI,
+      MACD, ATR%, ADX, distancias a EMA, volumen, cuerpo/rango — sin look-ahead.
+      Etiqueta de retorno futuro con horizonte configurable.
+- [x] Abstracción de modelos (`ml/model.py`): `LogisticRegressionModel` en numpy
+      puro (por defecto, sin dependencias) + adapters opcionales `SklearnGBModel`
+      (GradientBoosting) y `XGBoostModel`, con import perezoso.
+- [x] Validación *walk-forward* con ventana expansiva (`ml/training.py`), sin
+      look-ahead, con accuracy global, por fold y baseline.
+- [x] `MachineLearningAgent` (reemplaza el scaffold): auto-entrena sobre el
+      histórico, reentrena periódicamente y predice la dirección de la última
+      barra.
+- [x] `MetaModelWeighting`: meta-modelo de *stacking* (regresión logística online
+      por régimen) que aprende, a partir de los votos de todos los agentes y el
+      resultado real, qué agentes pesan más en cada régimen. Se conecta al
+      Supervisor vía el hook `observe()` (usado por `feedback` y por el backtester
+      con `learn=True`).
+- [x] Demo `examples/run_ml_train.py` y 16 tests nuevos (109 en total).
+
+> Nota honesta: sobre los **datos simulados** (un *random walk* con deriva) los
+> modelos rinden en torno al *baseline* — no hay edge que aprender, y así debe
+> ser. El valor entregado es el **pipeline correcto y sin look-ahead**; el edge
+> real solo puede evaluarse con datos de mercado reales (Fase 3 con MT5). El LSTM
+> secuencial queda como ruta opcional (requiere TensorFlow/torch, comentados en
+> `requirements.txt`); el modelo tabular (XGBoost) ya está integrado.
 
 ## 🔜 Fase 5 — Contexto externo
 
