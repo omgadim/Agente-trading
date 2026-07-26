@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .alerts import Notifier
 from .core import SupervisorDecision
@@ -65,6 +65,10 @@ class LiveTrader:
         self.notifier = notifier
         self.logger = logging.getLogger("live")
         self._trade_ids: Dict[int, int] = {}  # ticket -> id en la BD
+        # ticket -> (agentes accionables que contribuyeron, régimen) para
+        # atribuir aciertos/fallos por agente al cerrar (misma lógica que el
+        # backtester: rellena la tabla `agent_performance` del dashboard).
+        self._trade_context: Dict[int, Tuple[List[str], str]] = {}
         self._halt_notified = False
 
     def step(self) -> LiveStepResult:
@@ -131,15 +135,32 @@ class LiveTrader:
         """Registra los cierres del broker: persistencia, riesgo y kill switch."""
         closed = self.broker.poll_closed_deals()
         for deal in closed:
-            trade_id = self._trade_ids.pop(getattr(deal, "ticket", None), None)
+            ticket = getattr(deal, "ticket", None)
+            trade_id = self._trade_ids.pop(ticket, None)
             if self.repository is not None and trade_id is not None:
                 self.repository.close_trade(trade_id, deal.exit_price, deal.pnl)
+            self._attribute_performance(ticket, deal.pnl)
             self.risk_manager.register_pnl(deal.pnl)
             if self.kill_switch is not None:
                 self.kill_switch.record_trade(deal.pnl)
             self._notify(f"Cierre {self.symbol} pnl={deal.pnl:.2f}", "Operación cerrada",
                          level="warning" if deal.pnl < 0 else "info")
         return list(closed)
+
+    def _attribute_performance(self, ticket: Optional[int], pnl: float) -> None:
+        """Actualiza el desempeño por agente/régimen tras cerrar (dashboard).
+
+        Cada agente que contribuyó con señal direccional a la decisión acierta
+        si la operación cerró en ganancia y falla si cerró en pérdida. Misma
+        lógica que `Backtester._persist_performance`.
+        """
+        context = self._trade_context.pop(ticket, None)
+        if self.repository is None or context is None:
+            return
+        agent_names, regime = context
+        profitable = pnl > 0
+        for agent_name in agent_names:
+            self.repository.update_agent_performance(agent_name, regime, profitable)
 
     def _persist(self, decision, md, order: Order) -> None:
         if self.repository is None:
@@ -151,6 +172,10 @@ class LiveTrader:
         )
         if order.ticket is not None:
             self._trade_ids[order.ticket] = trade_id
+            # Guarda los agentes accionables y el régimen para atribuir el
+            # resultado por agente cuando el broker confirme el cierre.
+            agent_names = [d.agent_name for d in decision.contributing if d.is_actionable]
+            self._trade_context[order.ticket] = (agent_names, md.regime.key)
 
     def _notify(self, message: str, subject: str = "Trading System", level: str = "info") -> None:
         if self.notifier is not None:

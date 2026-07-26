@@ -53,6 +53,38 @@ def test_reconciles_closes_to_repository():
     assert len(closed_in_db) == closed_total
 
 
+def test_attributes_agent_performance_on_close():
+    repo = SqliteRepository(":memory:")
+    repo.initialize()
+    trader, client = _trader(repository=repo)
+    closed_total = 0
+    for _ in range(150):
+        r = trader.step()
+        closed_total += len(r.closed)
+        client.advance(3)
+    assert closed_total > 0
+    # Al cerrar operaciones se puebla la tabla de desempeño por agente/régimen
+    # (la que consume el dashboard). El único agente accionable es "bull", así
+    # que cada cierre le atribuye exactamente un acierto o un fallo.
+    perf = repo.agent_performance()
+    assert perf, "agent_performance debería poblarse tras los cierres en vivo"
+    assert {p["agent_name"] for p in perf} == {"bull"}
+    assert sum(p["hits"] + p["misses"] for p in perf) == closed_total
+    assert all(p["regime"] for p in perf)  # el régimen quedó registrado
+    # El contexto por ticket se libera al cerrar: solo quedan las posiciones
+    # aún abiertas (a lo sumo `max_positions`), nunca las ya cerradas.
+    assert len(trader._trade_context) <= trader.max_positions
+
+
+def test_no_agent_performance_without_repository():
+    # Sin repositorio no se atribuye desempeño y no se guarda contexto por ticket.
+    trader, client = _trader()
+    for _ in range(60):
+        trader.step()
+        client.advance(3)
+    assert trader._trade_context == {}
+
+
 def test_kill_switch_halts_new_entries():
     ks = KillSwitch(KillSwitchConfig(max_consecutive_losses=2))
     trader, client = _trader(kill_switch=ks)
