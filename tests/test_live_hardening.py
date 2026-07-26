@@ -8,7 +8,7 @@ from trading_system.data import SimulatedDataFeed
 from trading_system.execution import MarketGuard, MT5Broker, MT5DataFeed, SimulatedMT5Client
 from trading_system.persistence import SqliteRepository
 from trading_system.risk import KillSwitch, KillSwitchConfig, RiskManager
-from trading_system.supervisor import StaticWeighting, Supervisor
+from trading_system.supervisor import AdaptiveWeighting, StaticWeighting, Supervisor
 
 
 class _Bull(BaseAgent):
@@ -26,12 +26,12 @@ class _RecordingNotifier(Notifier):
         return True
 
 
-def _trader(**kwargs):
+def _trader(weighting=None, **kwargs):
     base = SimulatedDataFeed(base_price=2000, drift=0.05, volatility=1.5,
                              bars=1500, seed=9).generate()
     client = SimulatedMT5Client(base, start=400)
     client.connect()
-    sup = Supervisor([_Bull("bull", {})], weighting=StaticWeighting({}),
+    sup = Supervisor([_Bull("bull", {})], weighting=weighting or StaticWeighting({}),
                      risk_manager=RiskManager())
     trader = LiveTrader(MT5DataFeed(client, bars=300), MT5Broker(client), sup,
                         guard=MarketGuard(allow_weekend=True), **kwargs)
@@ -83,6 +83,41 @@ def test_no_agent_performance_without_repository():
         trader.step()
         client.advance(3)
     assert trader._trade_context == {}
+
+
+def test_weighting_learns_in_live_and_persists_across_restart():
+    repo = SqliteRepository(":memory:")
+    repo.initialize()
+    weighting = AdaptiveWeighting(base=1.0, alpha=0.3)
+    trader, client = _trader(weighting=weighting, repository=repo)
+    closed_total = 0
+    for _ in range(150):
+        closed_total += len(trader.step().closed)
+        client.advance(3)
+    assert closed_total > 0
+
+    # 1) La ponderación aprendió en vivo: algún hit-rate se movió del neutro 0.5.
+    saved = repo.load_weight_state("weighting")
+    hits = saved.get("hit") or {}
+    assert hits, "el estado de la ponderación debería haberse persistido"
+    assert any(v != 0.5 for v in hits.values()), "la ponderación no aprendió en vivo"
+
+    # 2) Un runner nuevo (pesos frescos) restaura ese aprendizaje desde la BD.
+    fresh = AdaptiveWeighting(base=1.0, alpha=0.3)
+    assert fresh.state_dict()["hit"] == {}
+    _trader(weighting=fresh, repository=repo)  # al construirse, carga el estado
+    assert fresh.state_dict()["hit"] == hits
+
+
+def test_weights_not_persisted_without_repository():
+    # Sin repositorio el aprendizaje ocurre en memoria pero no se persiste ni rompe.
+    weighting = AdaptiveWeighting(base=1.0, alpha=0.3)
+    trader, client = _trader(weighting=weighting)
+    for _ in range(60):
+        trader.step()
+        client.advance(3)
+    # No hay excepción y el trader sigue operativo (sin persistencia de pesos).
+    assert trader.repository is None
 
 
 def test_kill_switch_halts_new_entries():

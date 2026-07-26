@@ -9,16 +9,19 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .alerts import Notifier
-from .core import SupervisorDecision
+from .core import AgentDecision, MarketRegime, SupervisorDecision
 from .core.enums import SignalType
 from .data.feed import DataFeed
 from .execution.broker import ExecutionBroker, Order
 from .execution.guards import MarketGuard
 from .risk import KillSwitch, RiskManager, trailing_actions
 from .supervisor import Supervisor
+
+# Clave con la que se persiste el estado de la ponderación del Supervisor.
+_WEIGHT_STATE_KEY = "weighting"
 
 
 @dataclass
@@ -65,11 +68,14 @@ class LiveTrader:
         self.notifier = notifier
         self.logger = logging.getLogger("live")
         self._trade_ids: Dict[int, int] = {}  # ticket -> id en la BD
-        # ticket -> (agentes accionables que contribuyeron, régimen) para
-        # atribuir aciertos/fallos por agente al cerrar (misma lógica que el
-        # backtester: rellena la tabla `agent_performance` del dashboard).
-        self._trade_context: Dict[int, Tuple[List[str], str]] = {}
+        # ticket -> (decisiones de los agentes, régimen) capturados al abrir. Al
+        # cerrar se usan para (1) alimentar el aprendizaje de la ponderación del
+        # Supervisor y (2) rellenar la tabla `agent_performance` del dashboard.
+        self._trade_context: Dict[int, Tuple[Sequence[AgentDecision], MarketRegime]] = {}
         self._halt_notified = False
+        # Restaura la ponderación aprendida (si hay persistencia): así el
+        # aprendizaje online sobrevive a los reinicios del runner.
+        self._load_weights()
 
     def step(self) -> LiveStepResult:
         md = self.feed.get_market_data(self.symbol)
@@ -139,28 +145,36 @@ class LiveTrader:
             trade_id = self._trade_ids.pop(ticket, None)
             if self.repository is not None and trade_id is not None:
                 self.repository.close_trade(trade_id, deal.exit_price, deal.pnl)
-            self._attribute_performance(ticket, deal.pnl)
+            self._learn_from_close(ticket, deal.pnl)
             self.risk_manager.register_pnl(deal.pnl)
             if self.kill_switch is not None:
                 self.kill_switch.record_trade(deal.pnl)
             self._notify(f"Cierre {self.symbol} pnl={deal.pnl:.2f}", "Operación cerrada",
                          level="warning" if deal.pnl < 0 else "info")
+        if closed:
+            self._save_weights()  # persistir el aprendizaje tras los cierres
         return list(closed)
 
-    def _attribute_performance(self, ticket: Optional[int], pnl: float) -> None:
-        """Actualiza el desempeño por agente/régimen tras cerrar (dashboard).
+    def _learn_from_close(self, ticket: Optional[int], pnl: float) -> None:
+        """Cierra el bucle de aprendizaje y atribución tras una operación.
 
-        Cada agente que contribuyó con señal direccional a la decisión acierta
-        si la operación cerró en ganancia y falla si cerró en pérdida. Misma
-        lógica que `Backtester._persist_performance`.
+        1) Alimenta la ponderación del Supervisor con el resultado real, de modo
+           que la estrategia adaptativa aprende también en vivo/paper (antes solo
+           se hacía en el backtester).
+        2) Actualiza la tabla `agent_performance` que consume el dashboard.
         """
         context = self._trade_context.pop(ticket, None)
-        if self.repository is None or context is None:
+        if context is None:
             return
-        agent_names, regime = context
+        decisions, regime = context
         profitable = pnl > 0
-        for agent_name in agent_names:
-            self.repository.update_agent_performance(agent_name, regime, profitable)
+        # 1) Aprendizaje online de la ponderación (peso que usa el Supervisor).
+        self.supervisor.learn(decisions, regime, profitable)
+        # 2) Desempeño por agente/régimen para el dashboard.
+        if self.repository is not None:
+            for d in decisions:
+                if d.is_actionable:
+                    self.repository.update_agent_performance(d.agent_name, regime.key, profitable)
 
     def _persist(self, decision, md, order: Order) -> None:
         if self.repository is None:
@@ -172,10 +186,31 @@ class LiveTrader:
         )
         if order.ticket is not None:
             self._trade_ids[order.ticket] = trade_id
-            # Guarda los agentes accionables y el régimen para atribuir el
-            # resultado por agente cuando el broker confirme el cierre.
-            agent_names = [d.agent_name for d in decision.contributing if d.is_actionable]
-            self._trade_context[order.ticket] = (agent_names, md.regime.key)
+            # Guarda las decisiones de los agentes y el régimen para, al cerrar,
+            # alimentar el aprendizaje de la ponderación y el desempeño por agente.
+            self._trade_context[order.ticket] = (decision.contributing, md.regime)
+
+    def _load_weights(self) -> None:
+        """Carga la ponderación aprendida desde la persistencia (best-effort)."""
+        if self.repository is None:
+            return
+        try:
+            state = self.repository.load_weight_state(_WEIGHT_STATE_KEY)
+            if state:
+                self.supervisor.weighting.load_state_dict(state)
+                self.logger.info("Ponderación restaurada desde la persistencia.")
+        except Exception as exc:  # nunca frenar la operativa por esto
+            self.logger.warning("No se pudo cargar la ponderación: %s", exc)
+
+    def _save_weights(self) -> None:
+        """Persiste la ponderación aprendida (best-effort)."""
+        if self.repository is None:
+            return
+        try:
+            self.repository.save_weight_state(
+                _WEIGHT_STATE_KEY, self.supervisor.weighting.state_dict())
+        except Exception as exc:
+            self.logger.warning("No se pudo guardar la ponderación: %s", exc)
 
     def _notify(self, message: str, subject: str = "Trading System", level: str = "info") -> None:
         if self.notifier is not None:

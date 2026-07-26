@@ -11,6 +11,7 @@ consuma exactamente lo que escribe el motor Python.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -48,6 +49,12 @@ class Repository(ABC):
 
     @abstractmethod
     def update_agent_performance(self, agent_name: str, regime: str, correct: bool) -> None: ...
+
+    @abstractmethod
+    def save_weight_state(self, name: str, state: Dict[str, Any]) -> None: ...
+
+    @abstractmethod
+    def load_weight_state(self, name: str) -> Dict[str, Any]: ...
 
     @abstractmethod
     def recent_decisions(self, limit: int = 20) -> List[Dict[str, Any]]: ...
@@ -144,6 +151,12 @@ class SqlRepository(Repository):
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (agent_name, regime)
             )""",
+            """CREATE TABLE IF NOT EXISTS weight_state (
+                name VARCHAR(50) NOT NULL,
+                state TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (name)
+            )""",
         ]
 
     # ---- escritura ----
@@ -215,6 +228,28 @@ class SqlRepository(Repository):
                 "UPDATE agent_performance SET hits=?, misses=?, hit_rate=?, updated_at=? WHERE id=?"),
                 (hits, misses, rate, _now(), _id))
         self._conn.commit()
+
+    def save_weight_state(self, name: str, state: Dict[str, Any]) -> None:
+        payload = json.dumps(state)
+        cur = self._cursor()
+        cur.execute(self._q("SELECT name FROM weight_state WHERE name=?"), (name,))
+        row = cur.fetchone()
+        if row is None:
+            cur.execute(self._q(
+                "INSERT INTO weight_state (name, state) VALUES (?,?)"), (name, payload))
+        else:
+            cur.execute(self._q(
+                "UPDATE weight_state SET state=?, updated_at=? WHERE name=?"),
+                (payload, _now(), name))
+        self._conn.commit()
+
+    def load_weight_state(self, name: str) -> Dict[str, Any]:
+        cur = self._cursor()
+        cur.execute(self._q("SELECT state FROM weight_state WHERE name=?"), (name,))
+        row = cur.fetchone()
+        if row is None or row[0] is None:
+            return {}
+        return json.loads(row[0])
 
     # ---- lectura ----
     def recent_decisions(self, limit: int = 20) -> List[Dict[str, Any]]:

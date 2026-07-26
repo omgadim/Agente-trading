@@ -10,6 +10,7 @@ from ..core import (
     AgentDecision,
     BaseAgent,
     MarketData,
+    MarketRegime,
     SignalType,
     SupervisorDecision,
 )
@@ -144,18 +145,24 @@ class Supervisor:
 
     # ---- Aprendizaje -----------------------------------------------------
     def feedback(self, decisions: Sequence[AgentDecision], md: MarketData, profitable: bool) -> None:
-        """Retroalimenta la estrategia de ponderación con el resultado real.
+        """Retroalimenta la ponderación con el resultado real (desde un `MarketData`)."""
+        self.learn(decisions, md.regime, profitable)
+
+    def learn(
+        self, decisions: Sequence[AgentDecision], regime: MarketRegime, profitable: bool
+    ) -> None:
+        """Actualiza la ponderación con el resultado real de una operación.
 
         Un agente "acertó" si su señal direccional coincidió con el resultado
-        (operación ganadora en su dirección).
+        (operación ganadora en su dirección). Se separa de `feedback` para poder
+        alimentarla en vivo con solo el régimen (sin arrastrar el `MarketData`).
         """
         for d in decisions:
             if not d.is_actionable:
                 continue
-            # Un agente "acertó" si su dirección coincidió con el resultado global.
-            self.weighting.update(d.agent_name, md.regime, profitable)
+            self.weighting.update(d.agent_name, regime, profitable)
         # Retroalimentación conjunta para meta-modelos de stacking.
-        self.weighting.observe(decisions, md.regime, profitable)
+        self.weighting.observe(decisions, regime, profitable)
 
     # ---- Internos --------------------------------------------------------
     @staticmethod

@@ -29,6 +29,13 @@ class WeightingStrategy(ABC):
     def observe(self, decisions: Sequence, regime: MarketRegime, profitable: bool) -> None:
         """Retroalimentación conjunta del ciclo (para meta-modelos de stacking)."""
 
+    def state_dict(self) -> Dict:
+        """Estado serializable para persistir el aprendizaje entre reinicios."""
+        return {}
+
+    def load_state_dict(self, state: Dict) -> None:
+        """Restaura el estado devuelto por `state_dict` (no-op por defecto)."""
+
 
 class StaticWeighting(WeightingStrategy):
     """Pesos fijos por agente desde configuración (fallback y punto de partida)."""
@@ -71,6 +78,13 @@ class AdaptiveWeighting(WeightingStrategy):
 
     def hit_rate(self, agent_name: str, regime: MarketRegime) -> float:
         return self._hit[self._key(agent_name, regime)]
+
+    def state_dict(self) -> Dict:
+        return {"hit": dict(self._hit)}
+
+    def load_state_dict(self, state: Dict) -> None:
+        for key, value in (state.get("hit") or {}).items():
+            self._hit[key] = float(value)
 
 
 class _OnlineLogistic:
@@ -165,3 +179,24 @@ class MetaModelWeighting(WeightingStrategy):
     def update(self, agent_name: str, regime: MarketRegime, correct: bool) -> None:
         # La retroalimentación real llega por observe(); mantenemos el respaldo.
         self.fallback.update(agent_name, regime, correct)
+
+    def state_dict(self) -> Dict:
+        return {
+            "fallback": self.fallback.state_dict(),
+            "counts": dict(self._counts),
+            "agent_index": self._agent_index,
+            "models": {k: {"w": m.w.tolist(), "b": m.b} for k, m in self._models.items()},
+        }
+
+    def load_state_dict(self, state: Dict) -> None:
+        self.fallback.load_state_dict(state.get("fallback") or {})
+        for key, value in (state.get("counts") or {}).items():
+            self._counts[key] = int(value)
+        index = state.get("agent_index")
+        if index:
+            self._agent_index = dict(index)
+        for key, blob in (state.get("models") or {}).items():
+            model = _OnlineLogistic(len(blob["w"]), lr=self.lr)
+            model.w = np.array(blob["w"], dtype=float)
+            model.b = float(blob["b"])
+            self._models[key] = model

@@ -74,3 +74,12 @@ CREATE TABLE IF NOT EXISTS agent_performance (
   updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_agent_regime (agent_name, regime)
 ) ENGINE=InnoDB;
+
+-- Estado serializado (JSON) de la ponderación del Supervisor, para que el
+-- aprendizaje online sobreviva a los reinicios del runner.
+CREATE TABLE IF NOT EXISTS weight_state (
+  name          VARCHAR(50) NOT NULL,
+  state         TEXT NOT NULL,
+  updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_name (name)
+) ENGINE=InnoDB;
