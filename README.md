@@ -75,6 +75,7 @@ src/trading_system/
 ├── backtest/      # backtester walk-forward + métricas
 ├── utils/         # logging, config
 ├── engine.py      # fachada TradingEngine (backtest/decisión)
+├── runtime.py     # builders: ensambla el LiveTrader desde config
 └── live.py        # LiveTrader (live/paper + kill switch + conciliación)
 integrations/
 ├── pine/          # Pine Script v6 (visualización TradingView)

@@ -33,6 +33,23 @@ pip install -r requirements.txt
 PYTHONPATH=src python -m examples.run_persistence_demo   # puebla data/trading.db
 ```
 
+### Runner de producción (`examples/run_live.py`)
+Ensambla todo desde `config.yaml` (`trading_system.runtime.build_live_trader`):
+feed+broker MT5, supervisor, riesgo, guardián, kill switch, alertas y persistencia.
+
+```bash
+# Paper (cualquier SO): prueba el cableado y el bucle completo
+PYTHONPATH=src python -m examples.run_live --mode paper --max-steps 200 --relax-guard
+
+# Live en cuenta DEMO (Windows con terminal MT5):
+#   1) pip install MetaTrader5 pymysql
+#   2) export MT5_LOGIN=... MT5_PASSWORD=... MT5_SERVER=...
+#   3) en config.yaml: mt5.enabled y persistence.enabled/alerts.enabled según se quiera
+PYTHONPATH=src python -m examples.run_live --mode live --interval 60
+```
+El mismo código sirve para paper y live; solo cambia `--mode` y las credenciales
+del entorno. Parada limpia con Ctrl-C (o el flag manual del kill switch).
+
 ### Docker (MySQL + dashboard + motor)
 ```bash
 docker compose up -d db dashboard   # BD + panel en http://localhost:8080
