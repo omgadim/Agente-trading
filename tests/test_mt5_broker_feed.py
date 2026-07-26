@@ -28,6 +28,27 @@ def test_feed_builds_market_data(client):
     assert md.regime is not None
 
 
+def test_feed_uses_only_closed_bars(client):
+    """Con closed_bars_only (por defecto) la última vela en formación se descarta."""
+    tf = Timeframe.M5
+    feed = MT5DataFeed(client, timeframes=(tf,), bars=200, closed_bars_only=True)
+    md = feed.get_market_data("XAUUSD")
+    # El feed pide bars+1 y descarta la última (en formación): la última vela del
+    # frame debe ser la penúltima de lo que devuelve el cliente crudo.
+    raw = client.rates("XAUUSD", tf, feed.bars + 1)
+    assert md.frame(tf).index[-1] == raw.index[-2]
+    assert md.frame(tf).index[-1] != raw.index[-1]  # la vela en curso NO está
+
+
+def test_feed_can_include_forming_bar_when_disabled(client):
+    tf = Timeframe.M5
+    feed = MT5DataFeed(client, timeframes=(tf,), bars=200, closed_bars_only=False)
+    md = feed.get_market_data("XAUUSD")
+    raw = client.rates("XAUUSD", tf, feed.bars)
+    # Sin el filtro, la última fila coincide con la vela más reciente del cliente.
+    assert md.frame(tf).index[-1] == raw.index[-1]
+
+
 def test_broker_open_and_positions(client):
     broker = MT5Broker(client)
     order = Order(symbol="XAUUSD", direction=SignalType.BUY, volume=0.2,

@@ -110,6 +110,11 @@ Dockerfile · docker-compose.yml   # despliegue (Fase 7)
   alertas (Telegram/Email/Composite), `KillSwitch` (pérdida diaria/drawdown/
   rachas/flag manual), conciliación de cierres en vivo, Docker y runbook
   operativo (`docs/OPERACIONES.md`).
+- **Operativa en vivo endurecida ✅** — decisiones **solo con velas cerradas**
+  (`mt5.closed_bars_only`, sin repintado intradía), **aprendizaje adaptativo en
+  vivo** (la ponderación del Supervisor aprende tras cada cierre, no solo en el
+  backtest) con **persistencia de pesos** (tabla `weight_state`, sobrevive a los
+  reinicios) y desempeño por agente/régimen también en live/paper.
 
 **Roadmap completo (Fases 1-7).** **21 agentes reales** operativos y 1 scaffold
 (Elliott). Backtests, sesión paper y ML usan **datos simulados** — validan la

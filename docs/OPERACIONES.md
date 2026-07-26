@@ -11,6 +11,23 @@ Guía de operación, despliegue y respuesta a incidentes del sistema. Complement
 | **Paper** | `SimulatedMT5Client` | ensayo del pipeline live sin riesgo (cualquier SO) |
 | **Live** | `RealMT5Client` (Windows + terminal MT5) | operativa real (empezar SIEMPRE en cuenta demo) |
 
+### Comportamiento del motor en vivo
+
+- **Solo velas cerradas.** El feed (`MT5DataFeed`, `closed_bars_only: true`)
+  descarta la última vela de cada marco, que en MT5 está aún en formación. Así
+  los indicadores no "repintan" dentro de la vela y las señales son estables. El
+  precio de **ejecución** sigue siendo el tick en vivo (BUY al ask, SELL al bid).
+  Ponlo en `false` en `config.yaml` (`mt5.closed_bars_only`) solo si quieres el
+  comportamiento intradía sobre la vela en curso.
+- **Aprendizaje adaptativo en vivo.** Al cerrarse cada operación, el `LiveTrader`
+  alimenta la ponderación del Supervisor con el resultado real
+  (`supervisor.learn`), de modo que cada agente gana o pierde peso según acierte
+  en cada régimen (no solo en el backtest).
+- **Persistencia del aprendizaje.** Con persistencia activa, los pesos aprendidos
+  se guardan en la tabla `weight_state` tras cada cierre y se restauran al
+  arrancar: el aprendizaje sobrevive a los reinicios del runner. Sin base de
+  datos, el aprendizaje ocurre en memoria (no persiste), sin romper la operativa.
+
 ## 2. Variables de entorno (nunca en el repo)
 
 ```

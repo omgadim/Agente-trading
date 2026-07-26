@@ -19,6 +19,7 @@ mt5:
   magic: 20250725
   filling: IOC            # IOC | FOK
   bars: 500               # nº de velas por timeframe a solicitar
+  closed_bars_only: true  # analizar solo velas CERRADAS (descarta la vela en formación)
 
 # Persistencia (Fase 6). backend sqlite (local/tests) o mysql (producción,
 # mismas tablas que lee el dashboard PHP). Credenciales MySQL por variables

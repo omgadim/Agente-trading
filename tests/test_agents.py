@@ -40,6 +40,40 @@ def test_trend_agent_bearish_on_downtrend(downtrend_feed):
     assert decision.signal is SignalType.SELL
 
 
+def _trending_frame(start: float, step: float, n: int = 120) -> pd.DataFrame:
+    """DataFrame OHLCV con tendencia lineal (step>0 sube, step<0 baja)."""
+    idx = pd.date_range("2024-01-01", periods=n, freq="15min")
+    close = [start + step * i for i in range(n)]
+    return pd.DataFrame(
+        {"open": close, "high": [c + 1 for c in close], "low": [c - 1 for c in close],
+         "close": close, "volume": [1000] * n},
+        index=idx,
+    )
+
+
+def test_trend_mtf_uses_only_available_timeframes():
+    """Solo considera los marcos presentes; los ausentes (D1/H4) no participan."""
+    up = _trending_frame(2000.0, 0.5)
+    md = MarketData("XAUUSD", {Timeframe.M15: up, Timeframe.H1: up}, price=2060.0,
+                    regime=MarketRegime(atr=5.0))
+    decision = AgentRegistry.create("trend_mtf", {}).run(md)
+    assert decision.signal is SignalType.BUY
+    # La explicación solo menciona los marcos realmente disponibles.
+    assert "M15" in decision.explanation and "H1" in decision.explanation
+    assert "D1" not in decision.explanation and "H4" not in decision.explanation
+
+
+def test_trend_mtf_ignores_timeframes_without_weight():
+    """Un marco sin peso en la escalera (M5) no cuenta para la tendencia."""
+    up = _trending_frame(2000.0, 0.5)      # H1 sube
+    down = _trending_frame(2100.0, -0.5)   # M5 baja, pero M5 no está en la escalera
+    md = MarketData("XAUUSD", {Timeframe.M5: down, Timeframe.H1: up}, price=2060.0,
+                    regime=MarketRegime(atr=5.0))
+    decision = AgentRegistry.create("trend_mtf", {}).run(md)
+    assert decision.signal is SignalType.BUY   # manda H1; M5 se ignora
+    assert "M5" not in decision.explanation
+
+
 def test_agent_failure_is_isolated(market_data):
     """Un agente que lanza excepción devuelve WAIT en vez de tumbar el sistema."""
     agent = AgentRegistry.create("technical", {})

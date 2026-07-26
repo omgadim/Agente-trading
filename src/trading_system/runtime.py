@@ -150,7 +150,11 @@ def build_live_trader(
     live_cfg = config.get("live", {}) or {}
 
     risk = RiskManager(RiskParameters(**(config.get("risk", {}) or {})))
-    feed = MT5DataFeed(client, bars=mt5_cfg.get("bars", 500))
+    feed = MT5DataFeed(
+        client,
+        bars=mt5_cfg.get("bars", 500),
+        closed_bars_only=mt5_cfg.get("closed_bars_only", True),
+    )
     broker = MT5Broker(client, magic=mt5_cfg.get("magic", 20250725))
 
     trader = LiveTrader(

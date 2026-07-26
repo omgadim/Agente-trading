@@ -79,7 +79,14 @@ class MT5Broker(ExecutionBroker):
 
 
 class MT5DataFeed(DataFeed):
-    """Fuente de datos multi-timeframe en vivo desde MetaTrader 5."""
+    """Fuente de datos multi-timeframe en vivo desde MetaTrader 5.
+
+    Con `closed_bars_only=True` (por defecto) el análisis usa **solo velas
+    cerradas**: se descarta la última vela de cada marco, que en MT5 está aún en
+    formación (`copy_rates_from_pos(..., 0, ...)` devuelve como última fila la
+    vela en curso). Así los indicadores no "repintan" dentro de la vela y las
+    decisiones son estables. El precio de ejecución sigue siendo el tick en vivo.
+    """
 
     def __init__(
         self,
@@ -88,17 +95,25 @@ class MT5DataFeed(DataFeed):
             Timeframe.M5, Timeframe.M15, Timeframe.H1, Timeframe.H4,
         ),
         bars: int = 500,
+        closed_bars_only: bool = True,
     ) -> None:
         self.client = client
         self.timeframes = tuple(timeframes)
         self.bars = bars
+        self.closed_bars_only = closed_bars_only
 
     def get_market_data(self, symbol: str = "XAUUSD") -> MarketData:
+        # Se pide una vela extra para no perder profundidad al descartar la
+        # vela en formación (así el análisis conserva `bars` velas cerradas).
+        count = self.bars + 1 if self.closed_bars_only else self.bars
         frames: Dict[Timeframe, "object"] = {}
         for tf in self.timeframes:
-            df = self.client.rates(symbol, tf, self.bars)
-            if df is not None and not df.empty:
-                frames[tf] = df
+            df = self.client.rates(symbol, tf, count)
+            if df is None or df.empty:
+                continue
+            if self.closed_bars_only and len(df) > 1:
+                df = df.iloc[:-1]  # descarta la vela en formación (no cerrada)
+            frames[tf] = df
         if not frames:
             raise ExecutionError(f"Sin datos de {symbol} desde MT5")
 

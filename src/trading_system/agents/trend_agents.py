@@ -19,24 +19,35 @@ class TrendMultiTimeframeAgent(BaseAgent):
 
     category = "trend"
 
+    #: Escalera de pesos por marco (más peso a los superiores). Solo se usan los
+    #: timeframes realmente presentes en el `MarketData`; los ausentes se ignoran
+    #: sin distorsionar la normalización (que divide por la suma de los presentes).
+    ladder = {
+        Timeframe.M15: 1.0,
+        Timeframe.H1: 1.5,
+        Timeframe.H4: 2.0,
+        Timeframe.D1: 2.5,
+    }
+
     def analyze(self, md: MarketData) -> AgentDecision:
-        tfs = [Timeframe.M15, Timeframe.H1, Timeframe.H4, Timeframe.D1]
-        weights = {Timeframe.M15: 1.0, Timeframe.H1: 1.5, Timeframe.H4: 2.0, Timeframe.D1: 2.5}
         fast = int(self.config.get("ema_fast", 20))
         slow = int(self.config.get("ema_slow", 50))
 
         score = 0.0
         total = 0.0
         detail = []
-        for tf in tfs:
-            if not md.has(tf):
+        # Recorre únicamente los marcos disponibles (de menor a mayor), tomando
+        # el peso de la escalera. Un marco sin peso asignado (p. ej. M5) no
+        # cuenta para la tendencia.
+        for tf in sorted(md.frames, key=lambda t: t.minutes):
+            w = self.ladder.get(tf)
+            if w is None:
                 continue
             df = md.frame(tf)
             if len(df) < slow + 2:
                 continue
             ema_f = ind.ema(df["close"], fast).iloc[-1]
             ema_s = ind.ema(df["close"], slow).iloc[-1]
-            w = weights[tf]
             total += w
             if ema_f > ema_s:
                 score += w
