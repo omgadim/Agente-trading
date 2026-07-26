@@ -87,7 +87,7 @@ agents:
   session: {}
   risk_management:
     max_atr_pct: 2.5
-    sl_mult: 1.5
+    sl_mult: 1.0            # validado out-of-sample (SL ajustado + TP amplio)
     tp_mult: 2.5
   open_trades_control: {}
 

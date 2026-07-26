@@ -10,12 +10,16 @@ def atr_sl_tp(
     price: float,
     atr: float,
     signal: SignalType,
-    sl_mult: float = 1.5,
+    sl_mult: float = 1.0,
     tp_mult: float = 2.5,
 ) -> Tuple[Optional[float], Optional[float]]:
     """Calcula SL/TP simétricos a la dirección usando múltiplos de ATR.
 
     Devuelve (stop_loss, take_profit). Para WAIT o ATR no válido -> (None, None).
+
+    Defaults SL=1.0 / TP=2.5 (ratio 1:2.5) validados *out-of-sample* sobre 2 años
+    de XAUUSD M15: SL ajustado + TP amplio maximizó el profit factor y redujo el
+    drawdown frente a SL=1.5 en el tramo de test no visto (ver examples/run_optimize.py).
     """
     if signal is SignalType.WAIT or atr <= 0 or price <= 0:
         return None, None
