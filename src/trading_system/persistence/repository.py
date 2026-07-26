@@ -14,6 +14,7 @@ from __future__ import annotations
 import sqlite3
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..core.decision import SupervisorDecision
@@ -264,6 +265,11 @@ class SqliteRepository(SqlRepository):
         self.path = path
 
     def _connect(self):
+        # Crea la carpeta contenedora si no existe (SQLite no crea directorios).
+        if self.path != ":memory:":
+            parent = Path(self.path).parent
+            if parent and not parent.exists():
+                parent.mkdir(parents=True, exist_ok=True)
         return sqlite3.connect(self.path)
 
 
