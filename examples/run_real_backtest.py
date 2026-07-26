@@ -29,6 +29,8 @@ def main() -> None:
     parser.add_argument("--base", type=int, default=5, help="Timeframe base en minutos")
     parser.add_argument("--step", type=int, default=4, help="Salto de barras entre decisiones")
     parser.add_argument("--warmup", type=int, default=500, help="Barras de calentamiento")
+    parser.add_argument("--max-window", type=int, default=6000,
+                        help="Ventana máxima de histórico por paso (0 = todo)")
     args = parser.parse_args()
 
     setup_logging("WARNING")
@@ -47,7 +49,7 @@ def main() -> None:
     supervisor = Supervisor(agents=build_agents(config), weighting=build_weighting(config))
     backtester = Backtester(
         supervisor, base_minutes=args.base, warmup=args.warmup, step=args.step,
-        learn=True, repository=repo,
+        learn=True, repository=repo, max_window=args.max_window or None,
     )
     result = backtester.run(base_df)
 

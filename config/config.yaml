@@ -108,8 +108,9 @@ agents:
     model: logistic         # logistic (numpy) | gboosting (sklearn) | xgboost
     horizon: 5              # barras a futuro para la etiqueta
     margin: 0.10            # umbral de probabilidad sobre 0.5 para señalar
-    retrain_every: 50       # reentrenamiento periódico (ventana expansiva)
+    retrain_every: 50       # reentrenamiento periódico
     min_train: 150
+    max_train_window: 3000  # tope de la ventana de entrenamiento (rolling)
 
   # --- Fase 5: Contexto externo (implementados) ---
   # Requieren un proveedor de datos. El NewsAgent puede cargar un CSV

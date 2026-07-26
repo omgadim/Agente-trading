@@ -57,3 +57,36 @@ def test_backtester_rejects_short_series():
     bt = Backtester(sup, warmup=300, step=5)
     with pytest.raises(ValueError):
         bt.run(base)
+
+
+def _supervisor_one():
+    return Supervisor([AgentRegistry.create("trend_mtf", {})], weighting=StaticWeighting({}))
+
+
+def test_resolve_levels_override_by_atr():
+    from trading_system.core import SignalType, SupervisorDecision
+    bt = Backtester(_supervisor_one(), sl_atr_mult=1.0, tp_atr_mult=3.0)
+    buy = SupervisorDecision(signal=SignalType.BUY, confidence=50, score=0.5,
+                             explanation="", estimated_risk=40)
+    assert bt._resolve_levels(buy, price=2000.0, atr=10.0) == (1990.0, 2030.0)
+    sell = SupervisorDecision(signal=SignalType.SELL, confidence=50, score=-0.5,
+                              explanation="", estimated_risk=40)
+    assert bt._resolve_levels(sell, price=2000.0, atr=10.0) == (2010.0, 1970.0)
+
+
+def test_resolve_levels_default_uses_decision():
+    from trading_system.core import SignalType, SupervisorDecision
+    bt = Backtester(_supervisor_one())  # sin override
+    d = SupervisorDecision(signal=SignalType.BUY, confidence=50, score=0.5,
+                           explanation="", estimated_risk=40, stop_loss=1980, take_profit=2040)
+    assert bt._resolve_levels(d, 2000.0, 10.0) == (1980, 2040)
+
+
+def test_backtester_max_window_runs():
+    base = SimulatedDataFeed(base_price=2000, drift=0.05, volatility=1.2,
+                             bars=1500, seed=5).generate()
+    agents = [AgentRegistry.create(n, {}) for n in ("trend_mtf", "technical", "risk_management")]
+    sup = Supervisor(agents, weighting=StaticWeighting({}))
+    result = Backtester(sup, warmup=300, step=8, max_window=400).run(base)
+    assert result.metrics["trades"] >= 0
+    assert result.equity_curve[0] == 10000.0

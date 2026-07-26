@@ -67,6 +67,9 @@ class Backtester:
         spread: float = 0.2,
         learn: bool = False,
         repository=None,
+        max_window: Optional[int] = None,
+        sl_atr_mult: Optional[float] = None,
+        tp_atr_mult: Optional[float] = None,
     ) -> None:
         self.supervisor = supervisor
         self.symbol = symbol
@@ -79,6 +82,14 @@ class Backtester:
         self.spread = spread
         self.learn = learn
         self.repository = repository
+        # Ventana máxima de histórico remuestreado por paso (coste acotado en
+        # series largas). None = todo el histórico (comportamiento original).
+        self.max_window = max_window
+        # Si se fijan, recalculan SL/TP desde el ATR del régimen (para optimizar
+        # la política de salida sin tocar cada agente). None = usar niveles de los
+        # agentes consolidados por el Supervisor.
+        self.sl_atr_mult = sl_atr_mult
+        self.tp_atr_mult = tp_atr_mult
         self.logger = logging.getLogger("backtest")
 
     def run(self, base_df: pd.DataFrame) -> BacktestResult:
@@ -118,23 +129,24 @@ class Backtester:
 
             # 2) Si estamos planos, evaluar una nueva decisión.
             if open_trade is None:
-                window = base_df.iloc[: i + 1]
+                lo = max(0, i + 1 - self.max_window) if self.max_window else 0
+                window = base_df.iloc[lo : i + 1]
                 md = build_market_data(
                     window, self.symbol, self.base_minutes, self.timeframes, self.spread
                 )
                 decision = self.supervisor.decide(md)
+                sl, tp = self._resolve_levels(decision, price, md.regime.atr)
                 if (
                     decision.signal in (SignalType.BUY, SignalType.SELL)
                     and not decision.vetoed
-                    and decision.stop_loss
-                    and decision.take_profit
+                    and sl and tp
                 ):
                     open_trade = Trade(
                         direction=decision.signal,
                         entry_price=price,
                         entry_pos=i,
-                        stop_loss=decision.stop_loss,
-                        take_profit=decision.take_profit,
+                        stop_loss=sl,
+                        take_profit=tp,
                         size=decision.position_size or 0.1,
                     )
                     self._persist_open(open_trade, decision, md.regime.key)
@@ -157,6 +169,18 @@ class Backtester:
         pnls = [t.pnl for t in trades if t.pnl is not None]
         metrics = compute_metrics(pnls, equity_curve)
         return BacktestResult(trades, equity_curve, metrics, self.initial_equity)
+
+    def _resolve_levels(self, decision, price: float, atr: float):
+        """SL/TP a usar: override por ATR si se configuró, si no los del Supervisor."""
+        if self.sl_atr_mult is None and self.tp_atr_mult is None:
+            return decision.stop_loss, decision.take_profit
+        if atr <= 0 or decision.signal is SignalType.WAIT:
+            return None, None
+        sl_mult = self.sl_atr_mult if self.sl_atr_mult is not None else 1.5
+        tp_mult = self.tp_atr_mult if self.tp_atr_mult is not None else 2.5
+        if decision.signal is SignalType.BUY:
+            return price - sl_mult * atr, price + tp_mult * atr
+        return price + sl_mult * atr, price - tp_mult * atr
 
     # ---- persistencia (opcional) ----------------------------------------
     def _persist_open(self, trade: Trade, decision, regime: str) -> None:

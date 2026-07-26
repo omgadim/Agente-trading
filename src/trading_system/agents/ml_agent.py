@@ -29,6 +29,9 @@ class MachineLearningAgent(BaseAgent):
         self.margin = float(self.config.get("margin", 0.10))
         self.retrain_every = int(self.config.get("retrain_every", 50))
         self.min_train = int(self.config.get("min_train", 150))
+        # Tope de la ventana de entrenamiento (reentrenamiento rolling). None =
+        # ventana expansiva. Acota el coste en series largas.
+        self.max_train_window = self.config.get("max_train_window")
         self._tf_name = self.config.get("timeframe")  # None => primario
         self._model: Model | None = None
         self._calls = 0
@@ -43,6 +46,8 @@ class MachineLearningAgent(BaseAgent):
 
     def analyze(self, md: MarketData) -> AgentDecision:
         df = self._frame(md)
+        if self.max_train_window:
+            df = df.iloc[-(int(self.max_train_window) + self.horizon):]
         X, y, _ = build_dataset(df, self.horizon)
         if len(X) < self.min_train or len(np.unique(y)) < 2:
             return self._wait(f"Datos insuficientes para ML (n={len(X)})")

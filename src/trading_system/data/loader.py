@@ -39,11 +39,19 @@ def load_ohlcv_csv(
     """
     p = Path(path)
     if not p.exists():
-        raise DataError(f"No existe el fichero CSV: {p}")
+        raise DataError(f"No existe el fichero: {p}")
 
-    df = pd.read_csv(p, sep=sep)
+    if p.suffix.lower() in (".xlsx", ".xls"):
+        try:
+            df = pd.read_excel(p)
+        except ImportError as exc:  # pragma: no cover - depende del entorno
+            raise DataError(
+                "Leer .xlsx requiere openpyxl (`pip install openpyxl`)."
+            ) from exc
+    else:
+        df = pd.read_csv(p, sep=sep)
     if df.empty:
-        raise DataError(f"CSV vacío: {p}")
+        raise DataError(f"Fichero vacío: {p}")
 
     # Normaliza nombres de columna.
     rename = {}
