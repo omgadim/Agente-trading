@@ -9,6 +9,7 @@ from .feed import (
     compute_regime,
     resample_ohlcv,
 )
+from .loader import load_ohlcv_csv
 
 __all__ = [
     "indicators",
@@ -18,4 +19,5 @@ __all__ = [
     "build_market_data",
     "resample_ohlcv",
     "compute_regime",
+    "load_ohlcv_csv",
 ]

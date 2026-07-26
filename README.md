@@ -36,6 +36,9 @@ PYTHONPATH=src python -m examples.run_demo
 
 # Backtest walk-forward del sistema completo (con métricas)
 PYTHONPATH=src python -m examples.run_backtest
+
+# Backtest sobre datos históricos REALES (CSV de MT5: Date,Open,High,Low,Close,...)
+PYTHONPATH=src python -m examples.run_real_backtest ruta/al/XAUUSD_M1.csv --base 5 --step 4
 ```
 
 ```python
