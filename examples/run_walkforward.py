@@ -29,8 +29,13 @@ REF_SL, REF_TP = 1.0, 2.5  # política candidata a validar
 
 def _run(df, config, base, step, warmup, max_window, sl, tp):
     sup = Supervisor(agents=build_agents(config), weighting=build_weighting(config))
-    return Backtester(sup, base_minutes=base, warmup=warmup, step=step, learn=True,
-                      max_window=max_window, sl_atr_mult=sl, tp_atr_mult=tp).run(df)
+    costs = config.get("costs", {}) or {}
+    return Backtester(
+        sup, base_minutes=base, warmup=warmup, step=step, learn=True,
+        max_window=max_window, sl_atr_mult=sl, tp_atr_mult=tp,
+        spread=costs.get("spread", 0.2), slippage=costs.get("slippage", 0.0),
+        commission_per_lot=costs.get("commission_per_lot", 0.0),
+    ).run(df)
 
 
 def main() -> None:

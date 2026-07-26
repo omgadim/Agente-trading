@@ -28,6 +28,12 @@ persistence:
   backend: sqlite         # sqlite | mysql
   sqlite_path: data/trading.db
 
+# Costes de transacción (backtesting): descontados por operación (round-turn).
+costs:
+  spread: 0.30            # spread del Oro en precio (USD); se paga entero por operación
+  slippage: 0.02          # deslizamiento por lado (USD)
+  commission_per_lot: 0.0 # comisión round-turn por lote (cuenta ECN)
+
 # Guardián de mercado (condiciones de ejecución en vivo)
 guards:
   max_spread: 0.60        # spread máximo aceptable en precio (USD); null = sin límite

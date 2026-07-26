@@ -47,9 +47,12 @@ def main() -> None:
     repo = SqliteRepository(":memory:")
     repo.initialize()
     supervisor = Supervisor(agents=build_agents(config), weighting=build_weighting(config))
+    costs = config.get("costs", {}) or {}
     backtester = Backtester(
         supervisor, base_minutes=args.base, warmup=args.warmup, step=args.step,
         learn=True, repository=repo, max_window=args.max_window or None,
+        spread=costs.get("spread", 0.2), slippage=costs.get("slippage", 0.0),
+        commission_per_lot=costs.get("commission_per_lot", 0.0),
     )
     result = backtester.run(base_df)
 

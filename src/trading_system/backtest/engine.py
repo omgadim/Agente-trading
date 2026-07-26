@@ -70,6 +70,8 @@ class Backtester:
         max_window: Optional[int] = None,
         sl_atr_mult: Optional[float] = None,
         tp_atr_mult: Optional[float] = None,
+        commission_per_lot: float = 0.0,
+        slippage: float = 0.0,
     ) -> None:
         self.supervisor = supervisor
         self.symbol = symbol
@@ -82,6 +84,12 @@ class Backtester:
         self.spread = spread
         self.learn = learn
         self.repository = repository
+        # Costes de transacción descontados por operación (round-turn):
+        #  - spread: se paga entero al abrir en ask y cerrar en bid.
+        #  - slippage: por lado (2x en el round-turn).
+        #  - commission_per_lot: comisión round-turn por lote.
+        self.commission_per_lot = commission_per_lot
+        self.slippage = slippage
         # Ventana máxima de histórico remuestreado por paso (coste acotado en
         # series largas). None = todo el histórico (comportamiento original).
         self.max_window = max_window
@@ -228,4 +236,10 @@ class Backtester:
 
     def _pnl(self, trade: Trade, exit_price: float) -> float:
         direction = 1 if trade.direction is SignalType.BUY else -1
-        return (exit_price - trade.entry_price) * direction * trade.size * self.contract_size
+        gross = (exit_price - trade.entry_price) * direction * trade.size * self.contract_size
+        return gross - self._cost(trade.size)
+
+    def _cost(self, size: float) -> float:
+        """Coste round-turn de una operación (spread entero + 2x slippage + comisión)."""
+        price_cost = (self.spread + 2.0 * self.slippage) * self.contract_size * size
+        return price_cost + self.commission_per_lot * size

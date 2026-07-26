@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from trading_system.backtest import Backtester
+from trading_system.backtest import Backtester, Trade
 from trading_system.backtest.metrics import compute_metrics
 from trading_system.core import AgentRegistry
 from trading_system.data import SimulatedDataFeed
@@ -90,3 +90,23 @@ def test_backtester_max_window_runs():
     result = Backtester(sup, warmup=300, step=8, max_window=400).run(base)
     assert result.metrics["trades"] >= 0
     assert result.equity_curve[0] == 10000.0
+
+
+def test_costs_reduce_pnl():
+    from trading_system.core import SignalType
+    # Coste round-turn = (spread + 2*slippage) * contract * size + commission * size.
+    bt = Backtester(_supervisor_one(), contract_size=100.0, spread=0.30,
+                    slippage=0.02, commission_per_lot=7.0)
+    trade = Trade(direction=SignalType.BUY, entry_price=2000.0, entry_pos=0,
+                  stop_loss=1990.0, take_profit=2020.0, size=0.5)
+    # Bruto: (2020-2000)*1*0.5*100 = 1000. Coste: (0.30+0.04)*100*0.5 + 7*0.5 = 17 + 3.5 = 20.5
+    assert bt._pnl(trade, 2020.0) == 1000.0 - 20.5
+
+
+def test_zero_costs_equal_gross():
+    from trading_system.core import SignalType
+    bt = Backtester(_supervisor_one(), contract_size=100.0, spread=0.0,
+                    slippage=0.0, commission_per_lot=0.0)
+    trade = Trade(direction=SignalType.SELL, entry_price=2000.0, entry_pos=0,
+                  stop_loss=2010.0, take_profit=1980.0, size=1.0)
+    assert bt._pnl(trade, 1980.0) == (2000.0 - 1980.0) * 1.0 * 100.0

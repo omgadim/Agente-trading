@@ -28,8 +28,11 @@ import trading_system.agents  # noqa: F401
 
 def _run(base_df, config, base, step, warmup, max_window, sl, tp):
     supervisor = Supervisor(agents=build_agents(config), weighting=build_weighting(config))
+    costs = config.get("costs", {}) or {}
     bt = Backtester(supervisor, base_minutes=base, warmup=warmup, step=step,
-                    learn=True, max_window=max_window, sl_atr_mult=sl, tp_atr_mult=tp)
+                    learn=True, max_window=max_window, sl_atr_mult=sl, tp_atr_mult=tp,
+                    spread=costs.get("spread", 0.2), slippage=costs.get("slippage", 0.0),
+                    commission_per_lot=costs.get("commission_per_lot", 0.0))
     return bt.run(base_df)
 
 
