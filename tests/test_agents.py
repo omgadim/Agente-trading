@@ -93,11 +93,12 @@ def test_disabled_agent_waits(market_data):
     assert decision.signal is SignalType.WAIT
 
 
-def test_scaffold_agent_is_planned(market_data):
-    # elliott es el único scaffold restante (Fase 2+); el resto ya son reales.
+def test_elliott_is_real_agent(market_data):
+    # elliott ya es un agente real (no scaffold): devuelve una decisión válida.
     decision = AgentRegistry.create("elliott", {}).run(market_data)
-    assert decision.signal is SignalType.WAIT
-    assert decision.metadata.get("planned") is True
+    assert isinstance(decision, AgentDecision)
+    assert decision.signal in (SignalType.BUY, SignalType.SELL, SignalType.WAIT)
+    assert decision.metadata.get("planned") is None
 
 
 def test_risk_agent_veto_on_extreme_volatility():

@@ -18,13 +18,13 @@ def test_engine_runs_full_cycle():
     engine = TradingEngine(_config())
     decision = engine.run_once()
     assert isinstance(decision, SupervisorDecision)
-    # Deben haber corrido los agentes reales + scaffolds deshabilitados excluidos.
+    # Deben haber corrido todos los agentes activos en config.
     names = {d.agent_name for d in decision.contributing}
     assert "trend_mtf" in names
     assert "smart_money" in names       # Fase 2, activo en config
     assert "machine_learning" in names  # Fase 4, activo en config
     assert "news" in names              # Fase 5, activo en config
-    assert "elliott" not in names       # scaffold deshabilitado en config
+    assert "elliott" in names           # ahora activo (agente real)
 
 
 def test_engine_execute_opens_paper_position():

@@ -118,3 +118,45 @@ def test_harmonic_shark():
 
 def test_harmonic_rejects_unstructured_ratios():
     assert _classify((0.0, 100.0, 90.0, 95.0, 93.0)) is None
+
+
+# ---- Elliott: impulso 1-5 + corrección ABC ----------------------------------
+from trading_system.agents.smart_money_agents import ElliottWaveAgent  # noqa: E402
+from trading_system.data.structure import Swing  # noqa: E402
+
+
+def _swings(prices):
+    """Construye pivotes alternados low/high a partir de precios (empieza en low)."""
+    return [Swing(pos=i, price=p, kind=("low" if i % 2 == 0 else "high"))
+            for i, p in enumerate(prices)]
+
+
+# Precios de un impulso alcista limpio (0..5) + corrección ABC (5..8):
+# 0(low) 1(high) 2(low) 3(high) 4(low) 5(high) 6(low=A) 7(high=B) 8(low=C)
+_BULL = [100, 120, 110, 150, 135, 175, 150, 165, 152]
+
+
+def test_elliott_bull_impulse_then_abc_is_buy():
+    sig = ElliottWaveAgent._detect(_swings(_BULL), tol=0.05)
+    assert sig is not None and sig[0] is SignalType.BUY
+
+
+def test_elliott_bear_is_sell():
+    # Espejo: se empieza en 'high' y los precios van invertidos.
+    prices = [200 - p for p in _BULL]
+    swings = [Swing(pos=i, price=p, kind=("high" if i % 2 == 0 else "low"))
+              for i, p in enumerate(prices)]
+    sig = ElliottWaveAgent._detect(swings, tol=0.05)
+    assert sig is not None and sig[0] is SignalType.SELL
+
+
+def test_elliott_rejects_wave4_overlap():
+    # Onda 4 (índice 4) por debajo del techo de la onda 1 (índice 1) -> inválido.
+    bad = [100, 120, 110, 150, 115, 175, 150, 165, 152]  # p4=115 < p1=120
+    assert ElliottWaveAgent._detect(_swings(bad), tol=0.05) is None
+
+
+def test_elliott_rejects_correction_erasing_impulse():
+    # C (índice 8) por debajo del inicio del impulso (índice 0) -> inválido.
+    bad = _BULL[:8] + [95]  # p8=95 < p0=100
+    assert ElliottWaveAgent._detect(_swings(bad), tol=0.05) is None

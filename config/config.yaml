@@ -138,5 +138,6 @@ agents:
     extreme_long: 70
     extreme_short: 30
 
-  # --- Agentes planificados (scaffold: devuelven WAIT hasta su fase) ---
-  elliott: { enabled: false }
+  # --- Elliott: impulso 1-5 + corrección ABC (entrada al reanudarse) ---
+  elliott:
+    tolerance: 0.05

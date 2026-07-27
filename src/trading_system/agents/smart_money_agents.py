@@ -345,3 +345,111 @@ def _any_near(value: float, targets: tuple, tol: float) -> tuple:
     """(ok, desviación) respecto al más cercano de varios objetivos puntuales."""
     best_dev = min(abs(value - t) / t if t else 1.0 for t in targets)
     return best_dev <= tol, best_dev
+
+
+@register_agent("elliott")
+class ElliottWaveAgent(BaseAgent):
+    """Conteo de ondas de Elliott: entrada al completarse la corrección ABC.
+
+    Portado (en su lógica de decisión) del escáner Elliott de LuxAlgo. Sobre los
+    últimos 9 pivotes alternados busca un **impulso 1-2-3-4-5** seguido de una
+    **corrección ABC** completada, y entra esperando el nuevo impulso:
+
+    - Impulso alcista + ABC bajista terminada -> BUY (se reanuda al alza).
+    - Impulso bajista + ABC alcista terminada -> SELL (se reanuda a la baja).
+
+    Reglas del impulso (Elliott clásico): la onda 3 no es la más corta, la onda 4
+    no solapa el territorio de la onda 1, y las ondas 3 y 5 superan a la anterior.
+    La corrección debe respetar el inicio del impulso (no borrarlo).
+
+    NO dibuja (eso es del Pine de TradingView) y NO repinta: los pivotes se
+    confirman con velas cerradas, así la decisión de la barra i solo usa datos
+    hasta i. SL/TP por ATR (política común del sistema).
+    """
+
+    category = "price_action"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        df = _structure_frame(md)
+        if len(df) < 60:
+            return self._wait("Datos insuficientes para Elliott")
+        atr = _atr(md, df)
+        swings = st.alternating_swings(st.find_swings(df, 3, 3))
+        if len(swings) < 9:
+            return self._wait("Pivotes insuficientes para conteo Elliott")
+
+        last = swings[-9:]
+        tol = float(self.config.get("tolerance", 0.05))
+        result = self._detect(last, tol)
+        if result is None:
+            return self._decision(
+                SignalType.WAIT, 20.0, "Sin estructura de Elliott válida (impulso+ABC)",
+                estimated_risk=45.0,
+            )
+        signal, label, conf = result
+        sl, tp = atr_sl_tp(md.price, atr, signal)
+        return self._decision(
+            signal, conf, label, estimated_risk=50.0, stop_loss=sl, take_profit=tp,
+            pattern="elliott",
+        )
+
+    @classmethod
+    def _detect(cls, swings, tol: float) -> Optional[tuple]:
+        """Devuelve (señal, etiqueta, confianza) si hay impulso+ABC completado."""
+        prices = [s.price for s in swings]
+        first = swings[0].kind
+        if first == "low":                      # impulso alcista + ABC bajista
+            ok, conf = cls._check_bull(prices, tol)
+            if ok:
+                return SignalType.BUY, "Impulso alcista + ABC completada → nueva onda al alza", conf
+        elif first == "high":                   # impulso bajista + ABC alcista (espejo)
+            ok, conf = cls._check_bull([-p for p in prices], tol)
+            if ok:
+                return SignalType.SELL, "Impulso bajista + ABC completada → nueva onda a la baja", conf
+        return None
+
+    @staticmethod
+    def _check_bull(p, tol: float) -> tuple:
+        """Valida un impulso alcista 1-5 (p0..p5) + corrección ABC (p5..p8).
+
+        Trabaja siempre en la orientación alcista; el caso bajista se evalúa con
+        los precios negados (espejo). Devuelve (ok, confianza).
+        """
+        p0, p1, p2, p3, p4, p5, p6, p7, p8 = p
+
+        # --- Impulso 1-2-3-4-5 (piernas al alza en 0-1, 2-3, 4-5) ---
+        if not (p1 > p0 and p3 > p2 and p5 > p4):
+            return False, 0.0
+        if not (p2 > p0):          # onda 2 no rompe el inicio
+            return False, 0.0
+        if not (p3 > p1):          # onda 3 supera el techo de la onda 1
+            return False, 0.0
+        if not (p4 > p1):          # onda 4 no solapa el territorio de la onda 1
+            return False, 0.0
+        if not (p5 > p3):          # onda 5 supera el techo de la onda 3
+            return False, 0.0
+        w1, w3, w5 = p1 - p0, p3 - p2, p5 - p4
+        if w3 < w1 and w3 < w5:    # la onda 3 nunca es la más corta
+            return False, 0.0
+
+        # --- Corrección ABC (A abajo 5-6, B arriba 6-7, C abajo 7-8) ---
+        if not (p6 < p5 and p7 > p6 and p8 < p7):
+            return False, 0.0
+        if not (p7 <= p5):         # el rebote B no supera el techo de la onda 5
+            return False, 0.0
+        if not (p8 < p5):          # C queda por debajo del techo (es una corrección)
+            return False, 0.0
+        if not (p8 > p0):          # la corrección no borra el impulso
+            return False, 0.0
+
+        # --- Confianza: geometría de C vs A y fuerza de la onda 3 ---
+        conf = 60.0
+        wave_a = p5 - p6
+        wave_c = p7 - p8
+        if wave_a > 0:
+            ratio = wave_c / wave_a
+            if 0.85 <= ratio <= 1.15 or 1.5 <= ratio <= 1.75:
+                conf += 12.0
+        if w3 >= w1 and w3 >= w5:   # onda 3 es la más extensa (impulso sano)
+            conf += 8.0
+        return True, min(82.0, conf)
