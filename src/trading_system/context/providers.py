@@ -7,14 +7,23 @@ agentes de contexto no dependen de ninguna API concreta.
 """
 from __future__ import annotations
 
+import json
+import logging
+import os
+import time
+import urllib.parse
+import urllib.request
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
 
 from .events import EconomicEvent
+
+_logger = logging.getLogger("context.news_flow")
 
 
 # --------------------------------------------------------------------------- #
@@ -122,6 +131,101 @@ class InMemorySentimentProvider(SentimentProvider):
 
     def net_long(self, symbol: str, at: Optional[datetime] = None) -> Optional[float]:
         return self._values.get(symbol, self._default)
+
+
+# --------------------------------------------------------------------------- #
+#  Flujo de noticias (titulares de prensa) — p. ej. TheNewsAPI
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class Headline:
+    """Titular de prensa con su fecha de publicación (UTC)."""
+
+    title: str
+    published_at: datetime
+
+
+class NewsFlowProvider(ABC):
+    """Fuente de titulares recientes (para detectar ráfagas de noticias)."""
+
+    @abstractmethod
+    def recent(self, minutes: int, at: Optional[datetime] = None) -> List[Headline]:
+        """Titulares publicados en los últimos `minutes` respecto a `at` (o ahora)."""
+
+
+class InMemoryNewsFlowProvider(NewsFlowProvider):
+    """Titulares en memoria (tests/demos)."""
+
+    def __init__(self, headlines: Optional[List[Headline]] = None) -> None:
+        self._headlines = list(headlines or [])
+
+    def recent(self, minutes: int, at: Optional[datetime] = None) -> List[Headline]:
+        now = _to_utc(at or datetime.now(timezone.utc))
+        cutoff = now - timedelta(minutes=minutes)
+        return [h for h in self._headlines if cutoff <= _to_utc(h.published_at) <= now]
+
+
+class TheNewsApiProvider(NewsFlowProvider):
+    """Adapter de TheNewsAPI (https://www.thenewsapi.com).
+
+    Baja titulares recientes que coinciden con `search` (Oro/USD/Fed). Como el
+    plan gratuito limita a ~100 peticiones/día, **cachea** y solo vuelve a
+    consultar cada `ttl_sec` (por defecto 15 min → ~96/día). El token se toma de
+    `NEWS_API_TOKEN` (nunca se escribe en el repo). Sin token o sin red, devuelve
+    lista vacía sin romper la operativa.
+    """
+
+    ENDPOINT = "https://api.thenewsapi.com/v1/news/all"
+
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        search: str = "gold OR XAUUSD OR Federal Reserve OR inflation",
+        ttl_sec: int = 900,
+        limit: int = 3,
+        timeout: float = 8.0,
+    ) -> None:
+        self.token = token or os.getenv("NEWS_API_TOKEN")
+        self.search = search
+        self.ttl_sec = ttl_sec
+        self.limit = limit
+        self.timeout = timeout
+        self._cache: List[Headline] = []
+        self._last_fetch = 0.0
+
+    def recent(self, minutes: int, at: Optional[datetime] = None) -> List[Headline]:
+        self._maybe_refetch()
+        now = _to_utc(at or datetime.now(timezone.utc))
+        cutoff = now - timedelta(minutes=minutes)
+        return [h for h in self._cache if cutoff <= _to_utc(h.published_at) <= now]
+
+    def _maybe_refetch(self) -> None:
+        if not self.token:
+            return
+        if time.time() - self._last_fetch < self.ttl_sec:
+            return
+        self._last_fetch = time.time()  # marca aunque falle, para no reintentar en bucle
+        try:
+            self._cache = self._fetch()
+        except Exception as exc:  # una API caída nunca frena la operativa
+            _logger.warning("TheNewsAPI no disponible: %s", exc)
+
+    def _fetch(self) -> List[Headline]:  # pragma: no cover - requiere red/API
+        params = urllib.parse.urlencode({
+            "api_token": self.token, "search": self.search,
+            "language": "en", "limit": self.limit,
+        })
+        req = urllib.request.Request(f"{self.ENDPOINT}?{params}",
+                                     headers={"User-Agent": "trading-system"})
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        out: List[Headline] = []
+        for art in payload.get("data", []):
+            ts = art.get("published_at")
+            if not ts:
+                continue
+            out.append(Headline(title=str(art.get("title", "")),
+                                 published_at=pd.to_datetime(ts).to_pydatetime()))
+        return out
 
 
 # --------------------------------------------------------------------------- #

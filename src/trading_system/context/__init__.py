@@ -5,11 +5,15 @@ from .events import EconomicEvent
 from .providers import (
     CorrelationProvider,
     CsvNewsProvider,
+    Headline,
     InMemoryCorrelationProvider,
+    InMemoryNewsFlowProvider,
     InMemoryNewsProvider,
     InMemorySentimentProvider,
+    NewsFlowProvider,
     NewsProvider,
     SentimentProvider,
+    TheNewsApiProvider,
 )
 
 __all__ = [
@@ -21,4 +25,8 @@ __all__ = [
     "InMemoryCorrelationProvider",
     "SentimentProvider",
     "InMemorySentimentProvider",
+    "Headline",
+    "NewsFlowProvider",
+    "InMemoryNewsFlowProvider",
+    "TheNewsApiProvider",
 ]

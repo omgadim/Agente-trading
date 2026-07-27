@@ -145,6 +145,13 @@ agents:
   sentiment:
     extreme_long: 70
     extreme_short: 30
+  # Flujo de noticias (TheNewsAPI, solo-live). Veta ante ráfagas de titulares.
+  # Actívalo en el VPS con la variable de entorno NEWS_API_TOKEN.
+  news_flow:
+    enabled: false
+    window_min: 60          # ventana para contar titulares recientes
+    min_articles: 3         # nº de titulares que dispara la cautela/veto
+    refresh_sec: 900        # cada cuánto consulta la API (respeta 100 req/día)
 
   # --- Elliott: impulso 1-5 + corrección ABC (entrada al reanudarse) ---
   elliott:

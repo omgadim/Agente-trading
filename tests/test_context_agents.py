@@ -9,7 +9,9 @@ import pytest
 
 from trading_system.context import (
     EconomicEvent,
+    Headline,
     InMemoryCorrelationProvider,
+    InMemoryNewsFlowProvider,
     InMemoryNewsProvider,
     InMemorySentimentProvider,
 )
@@ -62,6 +64,32 @@ def test_news_ignores_far_and_low_impact(md):
         EconomicEvent(md.timestamp + timedelta(minutes=5), "JPY", "high", "otra divisa"),
     ]
     d = AgentRegistry.create("news", {"provider": InMemoryNewsProvider(evs)}).run(md)
+    assert d.metadata.get("veto") is not True
+
+
+# ---- News flow (ráfaga de titulares) ----------------------------------------
+def test_news_flow_vetoes_on_burst(md):
+    now = md.timestamp
+    heads = [Headline(f"Gold spikes {i}", now - timedelta(minutes=5 * i)) for i in range(4)]
+    prov = InMemoryNewsFlowProvider(heads)
+    d = AgentRegistry.create("news_flow", {"provider": prov, "window_min": 60,
+                                           "min_articles": 3}).run(md)
+    assert d.metadata.get("veto") is True
+    assert d.metadata.get("headline_count") >= 3
+
+
+def test_news_flow_calm_does_not_veto(md):
+    now = md.timestamp
+    heads = [Headline("Gold steady", now - timedelta(minutes=10))]  # solo 1 titular
+    prov = InMemoryNewsFlowProvider(heads)
+    d = AgentRegistry.create("news_flow", {"provider": prov, "window_min": 60,
+                                           "min_articles": 3}).run(md)
+    assert d.metadata.get("veto") is not True
+
+
+def test_news_flow_waits_without_provider(md):
+    d = AgentRegistry.create("news_flow", {}).run(md)
+    assert d.signal is SignalType.WAIT
     assert d.metadata.get("veto") is not True
 
 

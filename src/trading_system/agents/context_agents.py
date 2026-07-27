@@ -7,6 +7,7 @@ proveedor se pasa en `config['provider']` (objeto) al construir el agente; el
 """
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 from typing import Optional
 
@@ -15,8 +16,10 @@ import numpy as np
 from ..context.providers import (
     CorrelationProvider,
     CsvNewsProvider,
+    NewsFlowProvider,
     NewsProvider,
     SentimentProvider,
+    TheNewsApiProvider,
 )
 from ..core import AgentDecision, BaseAgent, MarketData, SignalType, register_agent
 
@@ -196,4 +199,59 @@ class SentimentAgent(BaseAgent):
         return self._decision(
             signal, confidence, reason, estimated_risk=50.0,
             stop_loss=sl, take_profit=tp, net_long=net_long,
+        )
+
+
+@register_agent("news_flow")
+class NewsFlowAgent(BaseAgent):
+    """Cautela ante ráfagas de noticias de prensa (TheNewsAPI).
+
+    Complementa al `NewsAgent` (calendario de eventos programados) detectando
+    **noticias NO programadas** (geopolítica, declaraciones sorpresa de la Fed...).
+    Si en la ventana reciente aparece una ráfaga de titulares relevantes de
+    Oro/USD, **veta** de forma preventiva (no apuesta dirección: el sentimiento
+    por titulares es ruidoso). Es un agente de contexto **solo-live**: sin
+    proveedor/token (p. ej. en backtest) devuelve WAIT inocuo.
+
+    Provider: se inyecta en `config['provider']`, o se construye desde la variable
+    de entorno `NEWS_API_TOKEN` (TheNewsAPI). Cachea para respetar el límite del
+    plan gratuito.
+    """
+
+    category = "context"
+
+    def _provider(self) -> Optional[NewsFlowProvider]:
+        provider = self.config.get("provider")
+        if provider is not None:
+            return provider
+        if os.getenv("NEWS_API_TOKEN"):
+            return TheNewsApiProvider(
+                search=self.config.get("search", "gold OR XAUUSD OR Federal Reserve OR inflation"),
+                ttl_sec=int(self.config.get("refresh_sec", 900)),
+            )
+        return None
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        provider = self._provider()
+        if provider is None:
+            return self._decision(
+                SignalType.WAIT, 0.0, "Sin proveedor de noticias configurado",
+                estimated_risk=50.0,
+            )
+        window = int(self.config.get("window_min", 60))
+        min_articles = int(self.config.get("min_articles", 3))
+        headlines = provider.recent(window, at=md.timestamp)
+        if len(headlines) >= min_articles:
+            ejemplo = headlines[0].title[:80] if headlines else ""
+            return self._decision(
+                SignalType.WAIT, 0.0,
+                f"Ráfaga de {len(headlines)} noticias en {window} min → cautela ('{ejemplo}')",
+                estimated_risk=90.0, veto=True,
+                veto_reason=f"Ráfaga de {len(headlines)} noticias de mercado en {window} min",
+                headline_count=len(headlines),
+            )
+        return self._decision(
+            SignalType.WAIT, 0.0,
+            f"Flujo de noticias normal ({len(headlines)} en {window} min)",
+            estimated_risk=30.0, headline_count=len(headlines),
         )
