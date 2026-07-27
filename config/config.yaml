@@ -43,7 +43,10 @@ guards:
   max_spread: 0.60        # spread máximo aceptable en precio (USD); null = sin límite
   allow_weekend: false
   trading_hours:          # ventanas UTC permitidas [inicio, fin); vacío = sin límite
-    - [7, 16]             # Londres + solape de Nueva York
+    - [7, 21]             # Londres + sesión completa de NY = 2 AM-4 PM Colombia.
+                          # El backtest no filtra horas; max_spread ya evita las
+                          # franjas ilíquidas, así que la ventana solo acota a la
+                          # sesión activa del Oro (evita rollover 21-22 UTC/Asia fina).
 
 # Operativa en vivo
 live:
