@@ -43,10 +43,11 @@ guards:
   max_spread: 0.60        # spread máximo aceptable en precio (USD); null = sin límite
   allow_weekend: false
   trading_hours:          # ventanas UTC permitidas [inicio, fin); vacío = sin límite
-    - [7, 21]             # Londres + sesión completa de NY = 2 AM-4 PM Colombia.
-                          # El backtest no filtra horas; max_spread ya evita las
-                          # franjas ilíquidas, así que la ventana solo acota a la
-                          # sesión activa del Oro (evita rollover 21-22 UTC/Asia fina).
+    - [2, 21]             # Asia(Tokio)+Londres+NY = 9 PM-4 PM Colombia. Backtest
+                          # 4.7a por hora: [2,21] rinde +40% vs [7,21] (18198 vs
+                          # 13022) con igual acierto; el bloque 02-04 UTC (Tokio)
+                          # es de los mejores (50% acierto). max_spread bloquea las
+                          # franjas ilíquidas. Se corta en 21 (rollover 21-22 UTC).
 
 # Operativa en vivo
 live:
