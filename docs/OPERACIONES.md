@@ -74,6 +74,20 @@ docker compose run --rm engine      # ejecuta el motor (backtest por defecto)
 ```
 El esquema MySQL se crea automáticamente desde `integrations/dashboard/sql/schema.sql`.
 
+### Monitor sin Docker (SQLite → HTML)
+En un VPS sin Docker/MySQL (p. ej. Forex VPS con SQLite) el panel PHP no aplica.
+El monitor lee la persistencia (`data/trading.db`) y genera un `dashboard.html`
+autocontenido que se abre en el navegador y se auto-refresca:
+```bash
+# Regenera dashboard.html cada 30 s y lo abre en el navegador:
+python -m examples.run_monitor --open
+# Un vistazo puntual (genera una vez y termina):
+python -m examples.run_monitor --once
+```
+Muestra los mismos KPIs que el panel PHP (operaciones, winrate, PnL, desempeño
+por agente/régimen, últimas decisiones y operaciones). Corre en paralelo al
+runner en vivo; SQLite admite lector + escritor a la vez.
+
 ## 4. Controles de riesgo (defensa en profundidad)
 
 1. **RiskManager** — dimensiona por ATR y veta por pérdida diaria (por operación).
