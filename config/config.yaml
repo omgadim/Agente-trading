@@ -66,7 +66,7 @@ alerts:
 
 # Supervisor central
 supervisor:
-  weighting: adaptive        # static | adaptive | meta
+  weighting: meta            # static | adaptive | meta (meta gana en backtest 4.7a)
   base_weight: 1.0
   learning_rate: 0.1
   meta_warmup: 30            # muestras por régimen antes de que el meta-modelo pese
@@ -86,9 +86,9 @@ agents:
   momentum:
     roc_period: 10
     threshold_pct: 0.15
-  technical: {}
+  technical: { enabled: false }   # flojo (backtest 4.7a): quitarlo sube el PF
   volatility: {}
-  volume: {}
+  volume: { enabled: false }      # flojo (backtest 4.7a): quitarlo sube el PF
   market_structure:
     swing_length: 5        # estructura de largo plazo
     internal_length: 2     # estructura interna (corto plazo) para confluencia
@@ -99,7 +99,7 @@ agents:
     discount: 0.25         # zona baja del rango (favorece compras)
     premium: 0.75          # zona alta del rango (favorece ventas)
   support_resistance: {}
-  candlestick: {}
+  candlestick: { enabled: false }  # flojo (backtest 4.7a): quitarlo sube el PF
   session: {}
   risk_management:
     max_atr_pct: 2.5
