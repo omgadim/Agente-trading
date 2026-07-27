@@ -110,7 +110,7 @@ agents:
     oversold: -80.0
     overbought: -20.0
   alligator:                      # Bill Williams Alligator (3 SMMA desplazadas)
-    enabled: false
+    enabled: true                 # backtest 4.7a: +3.3% beneficio y mejor PF
   fibonacci:                      # retrocesos de Fib a favor de tendencia
     enabled: false
     tol_atr: 0.5                  # cercanía (× ATR) a la zona Fib para entrar
