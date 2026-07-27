@@ -14,6 +14,7 @@ REAL_AGENTS = [
     "trend_mtf", "momentum", "technical", "volatility", "volume",
     "market_structure", "support_resistance", "candlestick", "session",
     "risk_management", "open_trades_control", "premium_discount",
+    "bollinger_stoch", "supertrend_adx",
 ]
 
 
@@ -114,6 +115,21 @@ def test_premium_discount_buys_in_discount():
                     regime=MarketRegime(atr=2.0))
     decision = AgentRegistry.create("premium_discount", {}).run(md)
     assert decision.signal is SignalType.BUY
+
+
+def test_supertrend_adx_buys_on_strong_uptrend():
+    # Tendencia alcista fuerte y sostenida -> SuperTrend alcista + ADX alto -> BUY.
+    idx = pd.date_range("2024-01-01", periods=120, freq="1h")
+    close = pd.Series([100 + i * 0.8 for i in range(120)], index=idx, dtype=float)
+    df = pd.DataFrame(
+        {"open": close.shift(1).fillna(close.iloc[0]), "high": close + 0.5,
+         "low": close - 0.5, "close": close, "volume": [1000.0] * 120},
+        index=idx,
+    )
+    md = MarketData("XAUUSD", {Timeframe.M5: df}, price=float(close.iloc[-1]),
+                    regime=MarketRegime(atr=2.0))
+    d = AgentRegistry.create("supertrend_adx", {}).run(md)
+    assert d.signal is SignalType.BUY
 
 
 def test_risk_agent_veto_on_extreme_volatility():

@@ -90,6 +90,52 @@ def adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return dx.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
 
 
+def bollinger(series: pd.Series, period: int = 20, mult: float = 2.0) -> pd.DataFrame:
+    """Bandas de Bollinger: media móvil ± `mult` desviaciones estándar."""
+    mid = sma(series, period)
+    sd = series.rolling(window=period, min_periods=period).std(ddof=0)
+    return pd.DataFrame({"mid": mid, "upper": mid + mult * sd, "lower": mid - mult * sd})
+
+
+def stochastic(df: pd.DataFrame, k_period: int = 14, d_period: int = 3) -> pd.DataFrame:
+    """Oscilador estocástico %K (rápido) y %D (media de %K)."""
+    low_min = df["low"].rolling(window=k_period, min_periods=k_period).min()
+    high_max = df["high"].rolling(window=k_period, min_periods=k_period).max()
+    rng = (high_max - low_min).replace(0.0, np.nan)
+    k = 100.0 * (df["close"] - low_min) / rng
+    d = k.rolling(window=d_period, min_periods=d_period).mean()
+    return pd.DataFrame({"k": k, "d": d})
+
+
+def supertrend(df: pd.DataFrame, period: int = 10, mult: float = 3.0) -> pd.DataFrame:
+    """SuperTrend (ATR): dirección de tendencia (+1 alcista / -1 bajista) y nivel.
+
+    Devuelve columnas `trend` (1/-1) y `level` (la línea del SuperTrend).
+    """
+    atr_ = atr(df, period).to_numpy()
+    hl2 = ((df["high"] + df["low"]) / 2.0).to_numpy()
+    close = df["close"].to_numpy()
+    n = len(df)
+    upper = hl2 + mult * atr_
+    lower = hl2 - mult * atr_
+    f_upper = np.full(n, np.nan)
+    f_lower = np.full(n, np.nan)
+    trend = np.ones(n, dtype=int)
+    for i in range(1, n):
+        f_upper[i] = (upper[i] if (np.isnan(f_upper[i - 1]) or upper[i] < f_upper[i - 1]
+                                   or close[i - 1] > f_upper[i - 1]) else f_upper[i - 1])
+        f_lower[i] = (lower[i] if (np.isnan(f_lower[i - 1]) or lower[i] > f_lower[i - 1]
+                                   or close[i - 1] < f_lower[i - 1]) else f_lower[i - 1])
+        if close[i] > f_upper[i - 1]:
+            trend[i] = 1
+        elif close[i] < f_lower[i - 1]:
+            trend[i] = -1
+        else:
+            trend[i] = trend[i - 1]
+    level = np.where(trend == 1, f_lower, f_upper)
+    return pd.DataFrame({"trend": trend, "level": level}, index=df.index)
+
+
 def roc(series: pd.Series, period: int = 10) -> pd.Series:
     """Rate of Change en porcentaje."""
     return series.pct_change(periods=period) * 100.0

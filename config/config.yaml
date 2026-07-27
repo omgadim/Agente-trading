@@ -89,6 +89,18 @@ agents:
   technical: { enabled: false }   # flojo (backtest 4.7a): quitarlo sube el PF
   volatility: {}
   volume: { enabled: false }      # flojo (backtest 4.7a): quitarlo sube el PF
+  bollinger_stoch:                # reversión en rango: Bollinger + Estocástico
+    enabled: false                # se valida con backtest antes de activarlo
+    bb_period: 20
+    bb_mult: 2.0
+    k_period: 14
+    d_period: 3
+    max_adx: 25.0                 # solo opera reversión en rango (ADX bajo)
+  supertrend_adx:                 # tendencia: SuperTrend (ATR) + filtro ADX
+    enabled: false
+    period: 10
+    mult: 3.0
+    min_adx: 20.0
   market_structure:
     swing_length: 5        # estructura de largo plazo
     internal_length: 2     # estructura interna (corto plazo) para confluencia

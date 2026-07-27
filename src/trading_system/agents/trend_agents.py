@@ -162,3 +162,50 @@ class TechnicalIndicatorAgent(BaseAgent):
             take_profit=tp,
             rsi=float(rsi) if not np.isnan(rsi) else None,
         )
+
+
+@register_agent("supertrend_adx")
+class SuperTrendAdxAgent(BaseAgent):
+    """Seguimiento de tendencia: SuperTrend (ATR) confirmado por ADX.
+
+    El SuperTrend marca la dirección (alcista/bajista) y el nivel dinámico de
+    stop; el ADX filtra por fuerza de tendencia (solo opera si hay tendencia
+    real). Pesa más los giros recientes del SuperTrend (cambio de dirección).
+    La convicción escala con el ADX.
+    """
+
+    category = "trend"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        df = md.frame(md.primary_tf)
+        period = int(self.config.get("period", 10))
+        if len(df) < period + 20:
+            return self._wait("Datos insuficientes para SuperTrend")
+
+        st = ind.supertrend(df, period, float(self.config.get("mult", 3.0)))
+        adx = float(ind.adx(df, 14).iloc[-1])
+        trend = int(st["trend"].iloc[-1])
+        trend_prev = int(st["trend"].iloc[-2])
+        min_adx = float(self.config.get("min_adx", 20.0))
+
+        if np.isnan(adx) or adx < min_adx:
+            return self._decision(
+                SignalType.WAIT, 20.0,
+                f"Sin tendencia confirmada (ADX={0 if np.isnan(adx) else adx:.0f}<{min_adx:.0f})",
+                estimated_risk=45.0,
+            )
+
+        signal = SignalType.BUY if trend == 1 else SignalType.SELL
+        # Confianza: base por ADX, bonus si el SuperTrend acaba de girar.
+        conf = min(88.0, 45.0 + (adx - min_adx) * 1.5)
+        flipped = trend != trend_prev
+        if flipped:
+            conf = min(90.0, conf + 12.0)
+        direction = "alcista" if trend == 1 else "bajista"
+        reason = (f"SuperTrend {direction}{' (giro)' if flipped else ''}, "
+                  f"ADX={adx:.0f}")
+        sl, tp = atr_sl_tp(md.price, md.regime.atr, signal)
+        return self._decision(
+            signal, conf, reason, estimated_risk=40.0, stop_loss=sl, take_profit=tp,
+            supertrend=direction, adx=round(adx, 1),
+        )

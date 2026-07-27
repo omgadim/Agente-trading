@@ -12,6 +12,7 @@ from ..core import (
     register_agent,
 )
 from ..data import indicators as ind
+from .helpers import atr_sl_tp
 
 
 @register_agent("volatility")
@@ -96,4 +97,59 @@ class VolumeAgent(BaseAgent):
             f"Volumen x{ratio:.2f} confirma vela {'alcista' if last_ret>0 else 'bajista'}",
             estimated_risk=45.0,
             vol_ratio=ratio,
+        )
+
+
+@register_agent("bollinger_stoch")
+class BollingerStochasticAgent(BaseAgent):
+    """Reversión en rango: Bandas de Bollinger + Estocástico.
+
+    Opera reversiones de alta calidad (donde el sistema, sesgado a tendencia, es
+    flojo): compra cuando el precio toca/perfora la banda INFERIOR y el
+    estocástico está sobrevendido y **girando al alza**; vende en la banda
+    superior con estocástico sobrecomprado girando a la baja. Para no pelear con
+    tendencias fuertes, solo actúa si el ADX es bajo (mercado en rango).
+    """
+
+    category = "technical"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        df = md.frame(md.primary_tf)
+        period = int(self.config.get("bb_period", 20))
+        if len(df) < period + 5:
+            return self._wait("Datos insuficientes para Bollinger/Estocástico")
+
+        bb = ind.bollinger(df["close"], period, float(self.config.get("bb_mult", 2.0)))
+        st = ind.stochastic(df, int(self.config.get("k_period", 14)),
+                            int(self.config.get("d_period", 3)))
+        adx = float(ind.adx(df, 14).iloc[-1])
+        upper, lower = bb["upper"].iloc[-1], bb["lower"].iloc[-1]
+        k, d = st["k"].iloc[-1], st["d"].iloc[-1]
+        k_prev, d_prev = st["k"].iloc[-2], st["d"].iloc[-2]
+        price = float(df["close"].iloc[-1])
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+
+        if np.isnan(upper) or np.isnan(k) or atr <= 0:
+            return self._wait("Indicadores no disponibles")
+
+        # Solo reversión en rango (ADX bajo); en tendencia fuerte no interfiere.
+        max_adx = float(self.config.get("max_adx", 25.0))
+        os_level = float(self.config.get("oversold", 20.0))
+        ob_level = float(self.config.get("overbought", 80.0))
+        turning_up = k > d and k_prev <= d_prev
+        turning_down = k < d and k_prev >= d_prev
+
+        signal, conf, reason = SignalType.WAIT, 20.0, "Sin señal de reversión"
+        if not np.isnan(adx) and adx <= max_adx:
+            if price <= lower and k < os_level and turning_up:
+                signal, conf = SignalType.BUY, 68.0
+                reason = f"Banda inferior + estocástico {k:.0f} girando (reversión al alza)"
+            elif price >= upper and k > ob_level and turning_down:
+                signal, conf = SignalType.SELL, 68.0
+                reason = f"Banda superior + estocástico {k:.0f} girando (reversión a la baja)"
+
+        sl, tp = atr_sl_tp(md.price, atr, signal)
+        return self._decision(
+            signal, conf, reason, estimated_risk=50.0, stop_loss=sl, take_profit=tp,
+            adx=round(adx, 1) if not np.isnan(adx) else None,
         )
