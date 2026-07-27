@@ -27,6 +27,12 @@ Guía de operación, despliegue y respuesta a incidentes del sistema. Complement
   se guardan en la tabla `weight_state` tras cada cierre y se restauran al
   arrancar: el aprendizaje sobrevive a los reinicios del runner. Sin base de
   datos, el aprendizaje ocurre en memoria (no persiste), sin romper la operativa.
+- **Ficha de decisión.** Antes de cada apertura, el `LiveTrader` registra una
+  ficha legible con el voto y la confianza de cada agente, el score, el riesgo y
+  el SL/TP, y el motivo. Se ve en el log y, con `live.cards_path` (por defecto
+  `logs/decisiones.log`), se anexa a un archivo para auditar cada operación:
+  saber en quién se apoyó y con qué convicción, y detectar agentes de baja
+  calidad con el tiempo.
 
 ## 2. Variables de entorno (nunca en el repo)
 

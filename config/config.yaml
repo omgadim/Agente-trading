@@ -47,6 +47,7 @@ live:
   max_positions: 1
   be_trigger: 1.0         # ATR de beneficio para mover a break-even
   trail_trigger: 2.0      # ATR de beneficio para activar trailing
+  cards_path: logs/decisiones.log  # ficha de decisión por operación (null = solo log)
 
 # Kill switch / watchdog (Fase 7): corta nuevas entradas ante riesgo.
 kill_switch:

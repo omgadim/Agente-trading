@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .alerts import Notifier
+from .cards import build_decision_card
 from .core import AgentDecision, MarketRegime, SupervisorDecision
 from .core.enums import SignalType
 from .data.feed import DataFeed
@@ -53,6 +55,7 @@ class LiveTrader:
         repository=None,
         kill_switch: Optional[KillSwitch] = None,
         notifier: Optional[Notifier] = None,
+        cards_path: Optional[str] = None,
     ) -> None:
         self.feed = feed
         self.broker = broker
@@ -66,6 +69,9 @@ class LiveTrader:
         self.repository = repository
         self.kill_switch = kill_switch
         self.notifier = notifier
+        # Ruta opcional donde anexar la ficha de decisión de cada operación.
+        self.cards_path = cards_path
+        self._decision_count = 0
         self.logger = logging.getLogger("live")
         self._trade_ids: Dict[int, int] = {}  # ticket -> id en la BD
         # ticket -> (decisiones de los agentes, régimen) capturados al abrir. Al
@@ -132,10 +138,30 @@ class LiveTrader:
         self.logger.info("Entrada %s @ %.2f vol=%.2f", decision.signal.value,
                          order.price, order.volume)
         self._persist(decision, md, order)
+        self._emit_card(decision, md, order)
         self._notify(f"Entrada {decision.signal.value} {self.symbol} @ {order.price:.2f} "
                      f"vol={order.volume} SL={order.stop_loss} TP={order.take_profit}",
                      "Operación abierta")
         return result
+
+    def _emit_card(self, decision, md, order: Order) -> None:
+        """Registra la ficha de decisión (log) y la anexa a `cards_path` si está."""
+        self._decision_count += 1
+        card = build_decision_card(
+            decision, self.symbol, md.regime.key,
+            counter=self._decision_count, entry=order.price,
+        )
+        self.logger.info("Ficha de decisión:\n%s", card)
+        if not self.cards_path:
+            return
+        try:
+            path = Path(self.cards_path)
+            if path.parent and not path.parent.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(card + "\n\n")
+        except Exception as exc:  # nunca frenar la operativa por el registro
+            self.logger.warning("No se pudo escribir la ficha en %s: %s", self.cards_path, exc)
 
     def _reconcile_closes(self) -> List[Any]:
         """Registra los cierres del broker: persistencia, riesgo y kill switch."""

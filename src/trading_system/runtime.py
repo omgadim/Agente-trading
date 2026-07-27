@@ -170,5 +170,6 @@ def build_live_trader(
         repository=build_repository(config),
         kill_switch=build_kill_switch(config),
         notifier=build_notifier(config),
+        cards_path=live_cfg.get("cards_path"),
     )
     return trader, client
