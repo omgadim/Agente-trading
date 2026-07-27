@@ -119,9 +119,11 @@ Dockerfile · docker-compose.yml   # despliegue (Fase 7)
   backtest) con **persistencia de pesos** (tabla `weight_state`, sobrevive a los
   reinicios) y desempeño por agente/régimen también en live/paper.
 
-**Roadmap completo (Fases 1-7).** **22 agentes reales** operativos (incluido
-Elliott: impulso 1-5 + corrección ABC), sin scaffolds pendientes.
-Backtests, sesión paper y ML usan **datos simulados** — validan la
+**Roadmap completo (Fases 1-7).** **23 agentes reales** operativos (incluidos
+Elliott —impulso 1-5 + corrección ABC— y Premium/Discount), sin scaffolds
+pendientes. La estructura usa BOS/CHoCH con seguimiento de tendencia y
+confluencia interna/swing (estilo LuxAlgo SMC); los Order Blocks aplican
+mitigación. Backtests, sesión paper y ML usan **datos simulados** — validan la
 mecánica y el pipeline, no un *edge* real. La operativa real requiere
 `RealMT5Client` en una **cuenta demo** de Windows (el paquete `MetaTrader5` es
 solo-Windows) y proveedores de contexto reales conectados a las interfaces de

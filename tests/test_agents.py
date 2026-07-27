@@ -13,7 +13,7 @@ import trading_system.agents  # noqa: F401
 REAL_AGENTS = [
     "trend_mtf", "momentum", "technical", "volatility", "volume",
     "market_structure", "support_resistance", "candlestick", "session",
-    "risk_management", "open_trades_control",
+    "risk_management", "open_trades_control", "premium_discount",
 ]
 
 
@@ -99,6 +99,21 @@ def test_elliott_is_real_agent(market_data):
     assert isinstance(decision, AgentDecision)
     assert decision.signal in (SignalType.BUY, SignalType.SELL, SignalType.WAIT)
     assert decision.metadata.get("planned") is None
+
+
+def test_premium_discount_buys_in_discount():
+    # Rango 90-110; precio a 92 (parte baja = discount) -> sesgo comprador.
+    idx = pd.date_range("2024-01-01", periods=60, freq="5min")
+    base = [90 + (i % 20) for i in range(60)]  # oscila 90..109
+    df = pd.DataFrame(
+        {"open": base, "high": [b + 1 for b in base], "low": [b - 1 for b in base],
+         "close": base, "volume": [1000.0] * 60},
+        index=idx, dtype=float,
+    )
+    md = MarketData("XAUUSD", {Timeframe.M5: df}, price=92.0,
+                    regime=MarketRegime(atr=2.0))
+    decision = AgentRegistry.create("premium_discount", {}).run(md)
+    assert decision.signal is SignalType.BUY
 
 
 def test_risk_agent_veto_on_extreme_volatility():

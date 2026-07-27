@@ -7,16 +7,18 @@ import numpy as np
 
 from ..core import AgentDecision, BaseAgent, MarketData, SignalType, Timeframe, register_agent
 from ..data import indicators as ind
+from ..data import structure as st
 from .helpers import atr_sl_tp
 
 
 @register_agent("market_structure")
 class MarketStructureAgent(BaseAgent):
-    """Detecta estructura por swings: HH/HL (alcista) vs LH/LL (bajista).
+    """Estructura de mercado con seguimiento de tendencia (BOS / CHoCH).
 
-    Usa pivotes fractales para identificar los dos últimos máximos y mínimos y
-    determina si la estructura es de continuación alcista, bajista o rota (posible
-    cambio de carácter / CHoCH).
+    Portado del método Smart Money de LuxAlgo: mantiene un sesgo y detecta la
+    ruptura del último swing. **CHoCH** (giro de tendencia) pesa más que **BOS**
+    (continuación). Combina dos escalas —estructura *swing* (largo plazo) e
+    *interna* (corto plazo)— y refuerza la confianza cuando ambas coinciden.
     """
 
     category = "structure"
@@ -27,31 +29,32 @@ class MarketStructureAgent(BaseAgent):
         if len(df) < 30:
             return self._wait("Datos insuficientes para estructura")
 
-        highs_mask = ind.swing_highs(df["high"], 2, 2)
-        lows_mask = ind.swing_lows(df["low"], 2, 2)
-        swing_highs = df["high"][highs_mask]
-        swing_lows = df["low"][lows_mask]
+        swing_len = int(self.config.get("swing_length", 5))
+        internal_len = int(self.config.get("internal_length", 2))
+        swing_state = st.market_structure(st.find_swings(df, swing_len, swing_len))
+        internal_state = st.market_structure(st.find_swings(df, internal_len, internal_len))
 
-        if len(swing_highs) < 2 or len(swing_lows) < 2:
-            return self._wait("Swings insuficientes")
+        # La estructura swing manda; si es indefinida, se usa la interna.
+        state = swing_state if swing_state.trend != "undefined" else internal_state
+        if state.trend == "undefined":
+            return self._wait("Estructura sin definir")
 
-        hh = swing_highs.iloc[-1] > swing_highs.iloc[-2]
-        hl = swing_lows.iloc[-1] > swing_lows.iloc[-2]
-        lh = swing_highs.iloc[-1] < swing_highs.iloc[-2]
-        ll = swing_lows.iloc[-1] < swing_lows.iloc[-2]
+        signal = SignalType.BUY if state.trend == "bullish" else SignalType.SELL
+        conf = 80.0 if state.event == "CHoCH" else 70.0   # el giro pesa más
+        # Confluencia entre escalas.
+        if internal_state.trend == swing_state.trend and swing_state.trend != "undefined":
+            conf = min(90.0, conf + 8.0)
+        elif internal_state.trend != "undefined" and swing_state.trend != "undefined" \
+                and internal_state.trend != swing_state.trend:
+            conf = max(45.0, conf - 15.0)
 
-        if hh and hl:
-            signal, conf, expl = SignalType.BUY, 75.0, "Estructura alcista (HH+HL)"
-        elif lh and ll:
-            signal, conf, expl = SignalType.SELL, 75.0, "Estructura bajista (LH+LL)"
-        elif hh and ll:
-            signal, conf, expl = SignalType.WAIT, 30.0, "Estructura en expansión (indecisa)"
-        else:
-            signal, conf, expl = SignalType.WAIT, 25.0, "Estructura mixta / posible CHoCH"
-
+        expl = (f"Estructura {state.trend} {state.event} "
+                f"(swing={swing_state.trend}/{swing_state.event}, "
+                f"interna={internal_state.trend}/{internal_state.event})")
         sl, tp = atr_sl_tp(md.price, md.regime.atr, signal)
         return self._decision(
-            signal, conf, expl, estimated_risk=40.0, stop_loss=sl, take_profit=tp
+            signal, conf, expl, estimated_risk=40.0, stop_loss=sl, take_profit=tp,
+            event=state.event, trend=state.trend,
         )
 
 
@@ -162,4 +165,55 @@ class SessionAgent(BaseAgent):
         return self._decision(
             SignalType.WAIT, 0.0, "Fuera de killzones (liquidez reducida)",
             estimated_risk=65.0, favorable=False,
+        )
+
+
+@register_agent("premium_discount")
+class PremiumDiscountAgent(BaseAgent):
+    """Sesgo por zona premium/discount del rango (Smart Money, LuxAlgo).
+
+    Divide el rango reciente en tres zonas: *discount* (parte baja) favorece
+    compras, *premium* (parte alta) favorece ventas, y *equilibrio* (centro) no
+    aporta señal. La convicción crece cuanto más profundo esté el precio en la
+    zona. Es un sesgo contextual, no un gatillo por sí solo.
+    """
+
+    category = "structure"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 20:
+            return self._wait("Datos insuficientes para premium/discount")
+
+        lookback = int(self.config.get("lookback", 50))
+        hi, lo, _eq = st.premium_discount(df, lookback=lookback)
+        rng = hi - lo
+        if rng <= 0:
+            return self._wait("Rango nulo")
+
+        price = md.price
+        pos = (price - lo) / rng  # 0 (mínimo) .. 1 (máximo)
+        disc_thr = float(self.config.get("discount", 0.25))
+        prem_thr = float(self.config.get("premium", 0.75))
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+
+        if pos <= disc_thr:
+            signal = SignalType.BUY
+            conf = 40.0 + (disc_thr - pos) / disc_thr * 30.0
+            expl = f"Precio en discount ({pos * 100:.0f}% del rango) → sesgo comprador"
+        elif pos >= prem_thr:
+            signal = SignalType.SELL
+            conf = 40.0 + (pos - prem_thr) / (1.0 - prem_thr) * 30.0
+            expl = f"Precio en premium ({pos * 100:.0f}% del rango) → sesgo vendedor"
+        else:
+            return self._decision(
+                SignalType.WAIT, 20.0,
+                f"Precio en equilibrio ({pos * 100:.0f}% del rango)", estimated_risk=40.0,
+            )
+
+        sl, tp = atr_sl_tp(price, atr, signal)
+        return self._decision(
+            signal, min(70.0, conf), expl, estimated_risk=45.0,
+            stop_loss=sl, take_profit=tp, zone_pos=round(pos, 3),
         )

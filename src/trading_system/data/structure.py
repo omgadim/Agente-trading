@@ -139,13 +139,18 @@ def find_fvgs(df: pd.DataFrame, min_atr_frac: float = 0.0) -> List[FVG]:
 
 
 def find_order_blocks(
-    df: pd.DataFrame, impulse_atr: float = 1.0, lookback: int = 60
+    df: pd.DataFrame, impulse_atr: float = 1.0, lookback: int = 60, mitigation: bool = True
 ) -> List[OrderBlock]:
-    """Detecta Order Blocks.
+    """Detecta Order Blocks (con mitigación opcional, estilo LuxAlgo).
 
     Bullish OB: última vela bajista antes de un impulso alcista fuerte (cuerpo >
     `impulse_atr` * ATR) cuyo cierre supera el máximo de la vela contraria.
     Simétrico para bearish OB.
+
+    Con `mitigation=True` se descartan los OB ya **mitigados**: un OB alcista se
+    invalida si, tras formarse, el precio cierra por debajo de su base; uno bajista
+    si el precio cierra por encima de su techo. Así el agente solo opera zonas aún
+    vigentes (no niveles ya atravesados).
     """
     n = len(df)
     if n < 16:
@@ -163,39 +168,60 @@ def find_order_blocks(
         if np.isnan(atr) or atr <= 0:
             continue
         body_next = c[i + 1] - o[i + 1]
-        # Bullish OB
+        kind: Optional[str] = None
         if c[i] < o[i] and body_next > impulse_atr * atr and c[i + 1] > h[i]:
-            obs.append(OrderBlock("bullish", top=float(h[i]), bottom=float(low_[i]), pos=i))
-        # Bearish OB
+            kind = "bullish"
         elif c[i] > o[i] and (-body_next) > impulse_atr * atr and c[i + 1] < low_[i]:
-            obs.append(OrderBlock("bearish", top=float(h[i]), bottom=float(low_[i]), pos=i))
+            kind = "bearish"
+        if kind is None:
+            continue
+        top, bottom = float(h[i]), float(low_[i])
+        if mitigation and i + 2 <= n - 1:
+            after = c[i + 2:]
+            if kind == "bullish" and np.any(after < bottom):
+                continue   # base rota tras formarse -> OB alcista mitigado
+            if kind == "bearish" and np.any(after > top):
+                continue   # techo roto tras formarse -> OB bajista mitigado
+        obs.append(OrderBlock(kind, top=top, bottom=bottom, pos=i))
     return obs
 
 
 def market_structure(swings: List[Swing]) -> StructureState:
-    """Deriva tendencia y último evento estructural (BOS/CHoCH) desde los swings."""
-    highs = [s for s in swings if s.kind == "high"]
-    lows = [s for s in swings if s.kind == "low"]
-    if len(highs) < 2 or len(lows) < 2:
+    """Deriva tendencia y último evento estructural (BOS/CHoCH) desde los swings.
+
+    Método de seguimiento de tendencia (estilo LuxAlgo Smart Money Concepts):
+    recorre los pivotes manteniendo un sesgo (bullish/bearish). Cuando un máximo
+    supera al máximo anterior hay ruptura al alza; si el sesgo venía bajista es un
+    **CHoCH** (cambio de carácter / giro), si ya venía alcista es un **BOS**
+    (continuación). Simétrico a la baja. Devuelve el ÚLTIMO evento confirmado, que
+    es lo que un agente de estructura usa para votar dirección.
+    """
+    if len(swings) < 3:
         return StructureState("undefined", "none", None)
 
-    hh = highs[-1].price > highs[-2].price
-    hl = lows[-1].price > lows[-2].price
-    lh = highs[-1].price < highs[-2].price
-    ll = lows[-1].price < lows[-2].price
+    bias = 0
+    last = StructureState("undefined", "none", None)
+    prev_high: Optional[float] = None
+    prev_low: Optional[float] = None
+    for s in swings:
+        if s.kind == "high":
+            if prev_high is not None and s.price > prev_high:
+                event = "CHoCH" if bias < 0 else "BOS"
+                bias = 1
+                last = StructureState("bullish", event, prev_high)
+            prev_high = s.price
+        else:
+            if prev_low is not None and s.price < prev_low:
+                event = "CHoCH" if bias > 0 else "BOS"
+                bias = -1
+                last = StructureState("bearish", event, prev_low)
+            prev_low = s.price
+    return last
 
-    # Orden temporal del último high vs último low para distinguir BOS de CHoCH.
-    last_high_first = highs[-1].pos < lows[-1].pos
 
-    if hh and hl:
-        return StructureState("bullish", "BOS", highs[-2].price)
-    if ll and lh:
-        return StructureState("bearish", "BOS", lows[-2].price)
-    # Rompe en contra de la secuencia previa -> posible cambio de carácter.
-    if hh and ll:
-        event = "CHoCH" if last_high_first else "none"
-        return StructureState("undefined", event, None)
-    return StructureState("undefined", "none", None)
+def market_structure_at(swings: List[Swing], pos: int) -> StructureState:
+    """Estado estructural considerando solo los swings hasta `pos` (sin look-ahead)."""
+    return market_structure([s for s in swings if s.pos <= pos])
 
 
 def alternating_swings(swings: List[Swing]) -> List[Swing]:

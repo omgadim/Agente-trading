@@ -57,6 +57,40 @@ def test_bullish_order_block_detected():
     assert bull, "debería detectar un Order Block alcista"
 
 
+def test_order_block_mitigation_removes_broken():
+    rows = flat(20, 100.0)
+    rows += [(100.0, 100.2, 98.0, 98.5)]      # OB alcista (origen bajista) en pos 20
+    rows += [(98.5, 108.0, 98.5, 107.5)]      # impulso alcista fuerte (rompe el máximo)
+    rows += [(107.0, 107.5, 96.0, 96.5)]      # cierre 96.5 < base 98.0 -> mitiga el OB
+    df = make_df(rows)
+    con = [o for o in st.find_order_blocks(df, impulse_atr=0.5, mitigation=True) if o.kind == "bullish"]
+    sin = [o for o in st.find_order_blocks(df, impulse_atr=0.5, mitigation=False) if o.kind == "bullish"]
+    assert not con, "el OB mitigado no debe devolverse con mitigation=True"
+    assert sin, "sin mitigación el OB sí aparece"
+
+
+def test_market_structure_choch_on_trend_flip():
+    # Baja (LL) y luego rompe al alza (HH) -> primer giro = CHoCH alcista.
+    swings = [
+        st.Swing(0, 110, "high"), st.Swing(1, 100, "low"),
+        st.Swing(2, 108, "high"), st.Swing(3, 95, "low"),   # BOS bajista
+        st.Swing(4, 105, "high"), st.Swing(5, 90, "low"),   # BOS bajista (continuación)
+        st.Swing(6, 112, "high"),                            # rompe al alza -> CHoCH
+    ]
+    state = st.market_structure(swings)
+    assert state.trend == "bullish" and state.event == "CHoCH"
+
+
+def test_market_structure_bos_continuation():
+    # Máximos y mínimos crecientes -> continuación alcista (BOS, no CHoCH).
+    swings = [
+        st.Swing(0, 100, "low"), st.Swing(1, 110, "high"),
+        st.Swing(2, 105, "low"), st.Swing(3, 115, "high"),  # HH -> BOS alcista
+    ]
+    state = st.market_structure(swings)
+    assert state.trend == "bullish" and state.event == "BOS"
+
+
 # ---- Swings y estructura ----------------------------------------------------
 def test_swings_and_bullish_structure():
     # Zigzag ascendente: mínimos y máximos crecientes.

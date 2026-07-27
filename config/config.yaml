@@ -89,7 +89,13 @@ agents:
   technical: {}
   volatility: {}
   volume: {}
-  market_structure: {}
+  market_structure:
+    swing_length: 5        # estructura de largo plazo
+    internal_length: 2     # estructura interna (corto plazo) para confluencia
+  premium_discount:
+    lookback: 50
+    discount: 0.25         # zona baja del rango (favorece compras)
+    premium: 0.75          # zona alta del rango (favorece ventas)
   support_resistance: {}
   candlestick: {}
   session: {}
