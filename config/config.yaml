@@ -134,7 +134,7 @@ agents:
   # en agent.config['provider'] tras construir el motor. Sin proveedor devuelven
   # WAIT de forma inocua.
   news:
-    # calendar_csv: data/calendar.csv   # export de ForexFactory/Investing
+    calendar_csv: config/calendar_econ.csv  # calendario USD (UTC). Actualízalo cada semana.
     blackout_before_min: 30
     blackout_after_min: 15
     currencies: [USD]

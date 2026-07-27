@@ -24,6 +24,7 @@ htmlcov/
 /data/
 /logs/
 *.csv
+!config/calendar_econ.csv   # calendario económico: SÍ se versiona (se despliega al VPS)
 
 # IDE / OS
 .vscode/

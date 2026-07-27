@@ -43,6 +43,18 @@ def test_news_vetoes_on_high_impact_usd(md):
     assert "NFP" in d.explanation
 
 
+def test_news_vetoes_from_calendar_csv(md, tmp_path):
+    # Verifica la vía real: NewsAgent leyendo un calendario CSV (como en producción).
+    ts = md.timestamp
+    ev_time = (ts + timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+    csv = tmp_path / "cal.csv"
+    csv.write_text("time,currency,impact,title\n"
+                   f"{ev_time},USD,high,Non-Farm Payrolls\n")
+    d = AgentRegistry.create("news", {"calendar_csv": str(csv)}).run(md)
+    assert d.metadata.get("veto") is True
+    assert "Non-Farm Payrolls" in d.explanation
+
+
 def test_news_ignores_far_and_low_impact(md):
     evs = [
         EconomicEvent(md.timestamp + timedelta(hours=5), "USD", "high", "far"),
