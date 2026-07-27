@@ -22,7 +22,7 @@ def test_engine_runs_full_cycle():
     names = {d.agent_name for d in decision.contributing}
     assert "trend_mtf" in names
     assert "smart_money" in names       # Fase 2, activo en config
-    assert "machine_learning" in names  # Fase 4, activo en config
+    assert "machine_learning" not in names  # Fase 4: desactivado (resta en walk-forward)
     assert "news" in names              # Fase 5, activo en config
     assert "elliott" in names           # ahora activo (agente real)
 

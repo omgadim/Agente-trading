@@ -154,6 +154,13 @@ agents:
 
   # --- Fase 4: Machine Learning (implementado) ---
   machine_learning:
+    # DESACTIVADO: backtest walk-forward 4.7a (idéntico salvo ML) muestra que
+    # activarlo RESTA fuera de muestra: PF 1.669 -> 1.639 y neto 27446 -> 25841
+    # (-5.8%). Neto atribuido negativo. El edge del sistema es tendencial/
+    # estructural (market_structure/alligator/trend_mtf), no predictivo. Apagarlo
+    # recupera el mejor resultado medido. Reactivar solo si una versión futura
+    # supera el baseline sin ML en walk-forward.
+    enabled: false
     model: logistic         # logistic (numpy) | gboosting (sklearn) | xgboost
     horizon: 5              # barras a futuro para la etiqueta
     margin: 0.10            # umbral de probabilidad sobre 0.5 para señalar
