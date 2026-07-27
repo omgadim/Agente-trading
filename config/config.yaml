@@ -3,7 +3,7 @@ symbol: XAUUSD
 
 # Gestión de riesgo (ver risk/risk_manager.py::RiskParameters)
 risk:
-  account_balance: 10000.0
+  account_balance: 1000.0   # alineado con la cuenta demo real (ver crecer 1.000)
   risk_per_trade_pct: 1.0
   max_daily_loss_pct: 5.0
   contract_size: 100.0
@@ -58,8 +58,8 @@ live:
 # Kill switch / watchdog (Fase 7): corta nuevas entradas ante riesgo.
 kill_switch:
   enabled: true
-  max_daily_loss: 500.0          # pérdida diaria máxima (dinero); null = sin límite
-  max_drawdown: 800.0            # drawdown máximo de equity realizada; null = sin límite
+  max_daily_loss: 50.0           # 5% de 1.000 (escalado al capital demo); null = sin límite
+  max_drawdown: 80.0             # 8% de 1.000 (escalado al capital demo); null = sin límite
   max_consecutive_losses: 5      # rachas de pérdidas; null = sin límite
   flag_file: null                # ruta a un fichero cuya existencia detiene la operativa
 
