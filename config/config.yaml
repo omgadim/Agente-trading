@@ -42,12 +42,15 @@ costs:
 guards:
   max_spread: 0.60        # spread máximo aceptable en precio (USD); null = sin límite
   allow_weekend: false
-  trading_hours:          # ventanas UTC permitidas [inicio, fin); vacío = sin límite
-    - [2, 21]             # Asia(Tokio)+Londres+NY = 9 PM-4 PM Colombia. Backtest
-                          # 4.7a por hora: [2,21] rinde +40% vs [7,21] (18198 vs
-                          # 13022) con igual acierto; el bloque 02-04 UTC (Tokio)
-                          # es de los mejores (50% acierto). max_spread bloquea las
-                          # franjas ilíquidas. Se corta en 21 (rollover 21-22 UTC).
+  trading_hours: []       # SIN filtro horario (24h en días de semana): en la
+                          # cuenta demo dejamos que el guardián max_spread (0.60)
+                          # filtre las franjas ilíquidas con el SPREAD REAL, en vez
+                          # de recortar por reloj con un backtest de spread fijo.
+                          # El backtest 4.7a (spread fijo 0.30) da su máximo a 24h
+                          # (22635), pero ese número infla las horas de rollover y
+                          # sesión asiática. Tras 1-2 semanas de demo se fija la
+                          # ventana definitiva según qué horas operan de verdad.
+                          # Ventanas UTC permitidas [inicio, fin); ejemplo: - [2, 21]
 
 # Operativa en vivo
 live:
