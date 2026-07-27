@@ -47,7 +47,7 @@ guards:
 
 # Operativa en vivo
 live:
-  max_positions: 1
+  max_positions: 2        # walk-forward 4.7a: 2 pos +24.6% neto y mejor PF que 1
   be_trigger: 1.0         # ATR de beneficio para mover a break-even
   trail_trigger: 2.0      # ATR de beneficio para activar trailing
   cards_path: logs/decisiones.log  # ficha de decisión por operación (null = solo log)
@@ -169,6 +169,12 @@ agents:
     blackout_after_min: 15
     currencies: [USD]
   correlation:
+    # DESACTIVADO: A/B walk-forward 4.7a con USDCHF+AUDUSD reales (sin look-ahead)
+    # da -6% neto (22026 -> 20698, PF 1.646 -> 1.631). Filtra 24 trades, casi todos
+    # ganadores de las folds fuertes. El Oro en tendencia se mueve por su propia
+    # estructura, no por la correlación instantánea del franco/aussie (ruidosa).
+    # Los símbolos quedan por si se reactiva con otra lógica (p. ej. solo veto).
+    enabled: false
     lookback: 50
     min_abs_corr: 0.3
     threshold: 0.1

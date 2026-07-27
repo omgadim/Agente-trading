@@ -90,7 +90,11 @@ def test_live_feed_uses_configured_timeframes(config):
 
 def test_correlation_provider_wired_in_live(config):
     # Con symbols en config, el agente correlation recibe un provider MT5.
-    config.setdefault("agents", {}).setdefault("correlation", {})["symbols"] = ["USDCHF", "AUDUSD"]
+    # (El agente viene desactivado por defecto -A/B: -6% neto-; aquí lo reactivamos
+    # explícitamente para probar el cableado del provider.)
+    corr_cfg = config.setdefault("agents", {}).setdefault("correlation", {})
+    corr_cfg["enabled"] = True
+    corr_cfg["symbols"] = ["USDCHF", "AUDUSD"]
     trader, client = build_live_trader(config, mode="paper")
     corr = next(a for a in trader.supervisor.agents if a.name == "correlation")
     provider = corr.config.get("provider")
