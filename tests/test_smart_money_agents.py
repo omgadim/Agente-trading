@@ -120,6 +120,38 @@ def test_harmonic_rejects_unstructured_ratios():
     assert _classify((0.0, 100.0, 90.0, 95.0, 93.0)) is None
 
 
+# ---- Wyckoff Pro (eventos del rango con volumen) ----------------------------
+def _wyckoff_md(last_row, range_vol=1000.0, n=40):
+    """MarketData con un rango plano 98-102 y una vela final controlada."""
+    import pandas as pd
+    idx = pd.date_range("2024-01-01", periods=n, freq="1h")
+    rows = [(100.0, 102.0, 98.0, 100.0, range_vol)] * (n - 1) + [last_row]
+    df = pd.DataFrame(rows, columns=["open", "high", "low", "close", "volume"], index=idx)
+    return MarketData("XAUUSD", {Timeframe.H1: df}, price=float(last_row[3]),
+                      regime=MarketRegime(atr=2.0))
+
+
+def test_wyckoff_pro_spring_no_supply_is_buy():
+    # Barrido bajo 98 que recupera, con volumen BAJO -> Spring sin oferta -> BUY.
+    md = _wyckoff_md((99.0, 100.0, 96.0, 99.5, 300.0), range_vol=1000.0)
+    d = AgentRegistry.create("wyckoff_pro", {}).run(md)
+    assert d.signal is SignalType.BUY and "SIN OFERTA" in d.explanation
+
+
+def test_wyckoff_pro_upthrust_no_demand_is_sell():
+    # Barrido sobre 102 que falla, con volumen BAJO -> Upthrust sin demanda -> SELL.
+    md = _wyckoff_md((101.0, 104.0, 100.0, 100.5, 300.0), range_vol=1000.0)
+    d = AgentRegistry.create("wyckoff_pro", {}).run(md)
+    assert d.signal is SignalType.SELL and "SIN DEMANDA" in d.explanation
+
+
+def test_wyckoff_pro_sos_breakout_is_buy():
+    # Cierre por encima del rango con volumen ALTO y vela amplia -> SOS -> BUY.
+    md = _wyckoff_md((100.0, 106.0, 100.0, 105.5, 2000.0), range_vol=1000.0)
+    d = AgentRegistry.create("wyckoff_pro", {}).run(md)
+    assert d.signal is SignalType.BUY and "SOS" in d.explanation
+
+
 # ---- Elliott: impulso 1-5 + corrección ABC ----------------------------------
 from trading_system.agents.smart_money_agents import ElliottWaveAgent  # noqa: E402
 from trading_system.data.structure import Swing  # noqa: E402

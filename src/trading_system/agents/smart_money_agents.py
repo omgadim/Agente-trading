@@ -216,6 +216,83 @@ class WyckoffAgent(BaseAgent):
         )
 
 
+@register_agent("wyckoff_pro")
+class WyckoffProAgent(BaseAgent):
+    """Wyckoff en profundidad: eventos del rango CON confirmación de volumen.
+
+    A diferencia del agente `wyckoff` (que solo mira el precio), aquí el volumen
+    manda —el principio de *esfuerzo vs resultado* de la metodología Wyckoff—:
+
+    - **Spring sin oferta** (barrido bajo el rango que recupera con volumen BAJO):
+      no hay presión vendedora -> acumulación fuerte -> BUY.
+    - **Upthrust sin demanda** (barrido sobre el rango que falla con volumen bajo):
+      no hay presión compradora -> distribución -> SELL.
+    - **SOS** (ruptura alcista con volumen ALTO y vela amplia): entra la demanda ->
+      BUY (inicio de markup).
+    - **SOW** (ruptura bajista con volumen alto): entra la oferta -> SELL.
+
+    La convicción escala con la relación de volumen frente a la media del rango.
+    """
+
+    category = "smart_money"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        df = _structure_frame(md)
+        lookback = int(self.config.get("lookback", 30))
+        if len(df) < lookback + 3 or "volume" not in df.columns:
+            return self._wait("Datos insuficientes para Wyckoff (volumen)")
+        atr = _atr(md, df)
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        window = df.iloc[-(lookback + 2):-1]           # rango: excluye la vela actual
+        range_hi = float(window["high"].max())
+        range_lo = float(window["low"].min())
+        avg_vol = float(window["volume"].mean())
+        last = df.iloc[-1]
+        low, high, close = float(last["low"]), float(last["high"]), float(last["close"])
+        vol = float(last["volume"])
+        vr = (vol / avg_vol) if avg_vol > 0 else 1.0   # relación de volumen
+        spread = high - low
+        tol = 0.1 * atr
+        lo_vol = float(self.config.get("low_vol", 1.0))
+        hi_vol = float(self.config.get("high_vol", 1.5))
+
+        signal, conf, reason = SignalType.WAIT, 20.0, "Sin evento Wyckoff"
+
+        # --- Spring / Upthrust (barrido que recupera): el volumen decide la calidad ---
+        if low < range_lo - tol and close > range_lo:
+            if vr <= lo_vol:
+                signal, conf = SignalType.BUY, 78.0
+                reason = f"Spring SIN OFERTA bajo {range_lo:.2f} (vol {vr:.1f}x → acumulación)"
+            else:
+                signal, conf = SignalType.BUY, 66.0
+                reason = f"Spring con absorción bajo {range_lo:.2f} (vol {vr:.1f}x)"
+        elif high > range_hi + tol and close < range_hi:
+            if vr <= lo_vol:
+                signal, conf = SignalType.SELL, 78.0
+                reason = f"Upthrust SIN DEMANDA sobre {range_hi:.2f} (vol {vr:.1f}x → distribución)"
+            else:
+                signal, conf = SignalType.SELL, 66.0
+                reason = f"Upthrust con distribución sobre {range_hi:.2f} (vol {vr:.1f}x)"
+        # --- SOS / SOW (ruptura confirmada con volumen alto y vela amplia) ---
+        elif close > range_hi + tol and vr >= hi_vol and spread > atr:
+            signal, conf = SignalType.BUY, 70.0
+            reason = f"SOS: ruptura de {range_hi:.2f} con volumen {vr:.1f}x (fuerza)"
+        elif close < range_lo - tol and vr >= hi_vol and spread > atr:
+            signal, conf = SignalType.SELL, 70.0
+            reason = f"SOW: ruptura de {range_lo:.2f} con volumen {vr:.1f}x (debilidad)"
+
+        if signal is not SignalType.WAIT:
+            conf = min(88.0, conf + min(10.0, max(0.0, (vr - 1.0) * 8.0)))
+
+        sl, tp = atr_sl_tp(md.price, atr, signal)
+        return self._decision(
+            signal, conf, reason, estimated_risk=50.0, stop_loss=sl, take_profit=tp,
+            range_hi=range_hi, range_lo=range_lo, vol_ratio=round(vr, 2),
+        )
+
+
 def _near(value: float, target: float, tol: float) -> tuple:
     """(ok, desviación_normalizada) respecto a un objetivo puntual."""
     dev = abs(value - target) / target if target else 1.0

@@ -117,6 +117,11 @@ agents:
   liquidity_sweep: {}
   wyckoff:
     lookback: 30
+  wyckoff_pro:                # Wyckoff con volumen (esfuerzo vs resultado)
+    enabled: false            # se valida con backtest antes de activarlo
+    lookback: 30
+    low_vol: 1.0              # <= media = "sin oferta/demanda"
+    high_vol: 1.5             # >= 1.5x media = ruptura confirmada (SOS/SOW)
   harmonic: {}
 
   # --- Fase 4: Machine Learning (implementado) ---
