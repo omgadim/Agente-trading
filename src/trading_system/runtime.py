@@ -14,6 +14,7 @@ import os
 from typing import Any, Dict, Optional, Tuple
 
 from .alerts import CompositeNotifier, EmailNotifier, LoggingNotifier, Notifier, TelegramNotifier
+from .core.enums import Timeframe
 from .data import SimulatedDataFeed
 from .engine import build_agents, build_weighting
 from .execution import (
@@ -150,8 +151,14 @@ def build_live_trader(
     live_cfg = config.get("live", {}) or {}
 
     risk = RiskManager(RiskParameters(**(config.get("risk", {}) or {})))
+    # Timeframe de análisis en vivo. Por defecto el más fino es M30 (coincide con
+    # el backtest validado); el runner revisa cada `interval` seg pero decide con
+    # velas M30 cerradas → misma calidad que lo validado, sin ruido de M5.
+    tf_names = mt5_cfg.get("timeframes") or ["M30", "H1", "H4"]
+    timeframes = tuple(Timeframe[name] for name in tf_names)
     feed = MT5DataFeed(
         client,
+        timeframes=timeframes,
         bars=mt5_cfg.get("bars", 500),
         closed_bars_only=mt5_cfg.get("closed_bars_only", True),
     )

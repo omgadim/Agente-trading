@@ -20,6 +20,9 @@ mt5:
   filling: IOC            # IOC | FOK
   bars: 500               # nº de velas por timeframe a solicitar
   closed_bars_only: true  # analizar solo velas CERRADAS (descarta la vela en formación)
+  # Timeframe de análisis en vivo (el más fino = timeframe de decisión). M30
+  # coincide con el backtest validado; el runner sigue revisando cada `interval`.
+  timeframes: [M30, H1, H4]
 
 # Persistencia (Fase 6). backend sqlite (local/tests) o mysql (producción,
 # mismas tablas que lee el dashboard PHP). Credenciales MySQL por variables

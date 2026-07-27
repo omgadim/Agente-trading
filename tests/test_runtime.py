@@ -77,3 +77,12 @@ def test_build_live_trader_live_mode_builds_real_client(config):
     trader, client = build_live_trader(config, mode="live")
     assert isinstance(client, RealMT5Client)
     assert isinstance(trader, LiveTrader)
+
+
+def test_live_feed_uses_configured_timeframes(config):
+    from trading_system.core.enums import Timeframe
+    config.setdefault("mt5", {})["timeframes"] = ["M30", "H1", "H4"]
+    trader, _client = build_live_trader(config, mode="paper")
+    assert trader.feed.timeframes == (Timeframe.M30, Timeframe.H1, Timeframe.H4)
+    # El primario (más fino) es M30 -> mismo timeframe de decisión que el backtest.
+    assert min(trader.feed.timeframes, key=lambda t: t.minutes) is Timeframe.M30
