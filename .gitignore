@@ -26,6 +26,8 @@ htmlcov/
 *.csv
 # El calendario económico SÍ se versiona (se despliega al VPS):
 !config/calendar_econ.csv
+# El texto pegado en crudo cada semana NO se versiona:
+config/calendar_raw.txt
 
 # IDE / OS
 .vscode/
