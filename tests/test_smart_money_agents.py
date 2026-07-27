@@ -62,15 +62,59 @@ def test_fvg_agent_buys_inside_bullish_gap():
 
 
 # ---- Reconocedor de patrones armónicos (unidad) -----------------------------
-def test_harmonic_matches_gartley_ratios():
-    match = HarmonicPatternAgent._match_pattern(b_ret=0.618, d_ret=0.786)
-    assert match is not None and match[0] == "Gartley"
+def _xabcd(ab_r, bc_r, ad_r, xa=100.0):
+    """Construye precios X,A,B,C,D alcistas con los ratios AB/XA, BC/AB y AD/XA."""
+    x, a = 0.0, xa
+    ab = ab_r * xa
+    b = a - ab
+    c = b + bc_r * ab
+    d = a - ad_r * xa
+    return x, a, b, c, d
 
 
-def test_harmonic_matches_bat_ratios():
-    match = HarmonicPatternAgent._match_pattern(b_ret=0.45, d_ret=0.886)
-    assert match is not None and match[0] == "Bat"
+def _classify(prices):
+    return HarmonicPatternAgent._classify(*prices, tol=0.05)
+
+
+def test_harmonic_gartley():
+    assert _classify(_xabcd(0.618, 0.50, 0.786))[0] == "Gartley"
+
+
+def test_harmonic_bat():
+    assert _classify(_xabcd(0.45, 0.50, 0.886))[0] == "Bat"
+
+
+def test_harmonic_butterfly():
+    assert _classify(_xabcd(0.786, 0.50, 1.27))[0] == "Butterfly"
+
+
+def test_harmonic_crab():
+    assert _classify(_xabcd(0.50, 0.50, 1.618))[0] == "Crab"
+
+
+def test_harmonic_deep_crab():
+    assert _classify(_xabcd(0.886, 0.50, 1.618))[0] == "Deep Crab"
+
+
+def test_harmonic_abcd():
+    # bc/ab en 0.618-0.786 y cd/ab ≈ 1.0 -> AB=CD (prioritario)
+    x, a, b = 0.0, 100.0, 30.0        # ab = 70
+    c = b + 0.70 * 70                  # bc/ab = 0.70
+    d = c - 70                         # cd/ab = 1.0
+    assert _classify((x, a, b, c, d))[0] == "AB=CD"
+
+
+def test_harmonic_5_0():
+    x, a, b = 0.0, 100.0, -30.0       # ab = 130 -> ab/xa = 1.3
+    c = b + 2.0 * 130                  # bc/ab = 2.0
+    d = c - 0.50 * (c - b)            # cd/bc = 0.5
+    assert _classify((x, a, b, c, d))[0] == "5-0"
+
+
+def test_harmonic_shark():
+    # shk_ab=bc/xa=1.3, shk_cd=cd/ab=2.0, shk_ext=|d-x|/xa=1.3
+    assert _classify((0.0, 100.0, 200.0, 330.0, 130.0))[0] == "Shark"
 
 
 def test_harmonic_rejects_unstructured_ratios():
-    assert HarmonicPatternAgent._match_pattern(b_ret=0.10, d_ret=0.30) is None
+    assert _classify((0.0, 100.0, 90.0, 95.0, 93.0)) is None

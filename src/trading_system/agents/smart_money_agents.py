@@ -216,22 +216,38 @@ class WyckoffAgent(BaseAgent):
         )
 
 
-# Ratios de referencia de los patrones armónicos (retroceso B y punto D sobre XA).
-_HARMONIC_PATTERNS = {
-    "Gartley": {"b": (0.618, 0.05), "d": (0.786, 0.05)},
-    "Bat": {"b": (0.45, 0.09), "d": (0.886, 0.05)},
-    "Butterfly": {"b": (0.786, 0.05), "d": (1.41, 0.20)},
-    "Crab": {"b": (0.5, 0.12), "d": (1.618, 0.06)},
-}
+def _near(value: float, target: float, tol: float) -> tuple:
+    """(ok, desviación_normalizada) respecto a un objetivo puntual."""
+    dev = abs(value - target) / target if target else 1.0
+    return dev <= tol, dev
+
+
+def _within(value: float, lo: float, hi: float, tol: float) -> tuple:
+    """(ok, desviación) respecto a un rango [lo, hi] con tolerancia en los bordes."""
+    ok = lo * (1 - tol) <= value <= hi * (1 + tol)
+    if value < lo:
+        dev = (lo - value) / lo if lo else 1.0
+    elif value > hi:
+        dev = (value - hi) / hi if hi else 1.0
+    else:
+        dev = 0.0
+    return ok, dev
 
 
 @register_agent("harmonic")
 class HarmonicPatternAgent(BaseAgent):
-    """Reconoce patrones armónicos XABCD (Gartley/Bat/Butterfly/Crab).
+    """Reconoce patrones armónicos sobre los últimos pivotes alternados.
 
-    Usa los últimos 5 pivotes alternados y valida los ratios de Fibonacci
-    característicos (retroceso de B y proyección del punto D sobre la pierna XA).
-    La finalización en un mínimo -> BUY; en un máximo -> SELL.
+    Portado de un escáner Pine basado en el "Manual de patrones armónicos":
+    valida los ratios de Fibonacci de las piernas AB, BC y la proyección del
+    punto D (XABCD de 5 puntos). Reconoce Gartley, Bat, Butterfly, Crab, Deep
+    Crab, 5-0, Shark y AB=CD, en ese orden de prioridad. La finalización en un
+    mínimo -> BUY; en un máximo -> SELL.
+
+    A diferencia del escáner de TradingView, aquí NO se repinta: los pivotes se
+    confirman con velas ya cerradas (`find_swings` mira a ambos lados), por lo
+    que la decisión de la barra i solo usa datos hasta i. SL/TP por ATR (política
+    común del sistema, validada en backtest).
     """
 
     category = "price_action"
@@ -246,39 +262,86 @@ class HarmonicPatternAgent(BaseAgent):
             return self._wait("Pivotes insuficientes para XABCD")
 
         x, a, b, c, d = swings[-5:]
-        xa = abs(a.price - x.price)
-        ab = abs(b.price - a.price)
-        ad = abs(d.price - a.price)
-        if xa <= 0:
-            return self._wait("Pierna XA nula")
-        b_ret = ab / xa
-        d_ret = ad / xa
-
-        match = self._match_pattern(b_ret, d_ret)
+        tol = float(self.config.get("tolerance", 0.05))
+        match = self._classify(x.price, a.price, b.price, c.price, d.price, tol)
         if match is None:
             return self._decision(
-                SignalType.WAIT, 20.0,
-                f"Sin patrón armónico (B={b_ret:.2f}, D={d_ret:.2f})",
+                SignalType.WAIT, 20.0, "Sin patrón armónico válido en XABCD",
                 estimated_risk=45.0,
             )
         name, err = match
         signal = SignalType.BUY if d.kind == "low" else SignalType.SELL
-        conf = max(45.0, 85.0 - err * 300.0)
+        conf = max(45.0, min(88.0, 88.0 - err * 250.0))
         sl, tp = atr_sl_tp(md.price, atr, signal)
         return self._decision(
             signal, conf, f"Patrón {name} completado en D={d.price:.2f}",
             estimated_risk=50.0, stop_loss=sl, take_profit=tp,
-            pattern=name, b_ret=b_ret, d_ret=d_ret,
+            pattern=name,
         )
 
     @staticmethod
-    def _match_pattern(b_ret: float, d_ret: float) -> Optional[tuple]:
-        best: Optional[tuple] = None
-        for name, spec in _HARMONIC_PATTERNS.items():
-            b_target, b_tol = spec["b"]
-            d_target, d_tol = spec["d"]
-            if abs(b_ret - b_target) <= b_tol and abs(d_ret - d_target) <= d_tol:
-                err = abs(b_ret - b_target) + abs(d_ret - d_target)
-                if best is None or err < best[1]:
-                    best = (name, err)
-        return best
+    def _classify(x: float, a: float, b: float, c: float, d: float, tol: float) -> Optional[tuple]:
+        """Clasifica el XABCD según los ratios del manual. (nombre, error) o None.
+
+        Se evalúan en orden de prioridad; se devuelve el primero que cumple TODAS
+        sus restricciones (misma lógica que el escáner Pine).
+        """
+        xa, ab, bc, cd = abs(a - x), abs(b - a), abs(c - b), abs(d - c)
+        if xa <= 0 or ab <= 0 or bc <= 0:
+            return None
+        ab_r = ab / xa            # AB respecto a XA
+        bc_r = bc / ab            # BC respecto a AB
+        ad_r = abs(a - d) / xa    # proyección de D sobre XA
+        cd_r = cd / bc            # CD respecto a BC (5-0)
+        cd_ab = cd / ab           # CD respecto a AB (AB=CD)
+        shk_ab = bc / xa          # Shark: convención O-X-A-B-C (x=O, a=X, b=A, c=B, d=C)
+        shk_cd = cd / ab
+        shk_ext = abs(d - x) / xa
+
+        def check(*constraints) -> Optional[float]:
+            """Devuelve el error total si TODAS se cumplen; si no, None."""
+            err = 0.0
+            for ok, dev in constraints:
+                if not ok:
+                    return None
+                err += dev
+            return err
+
+        # Orden de prioridad (idéntico al escáner Pine).
+        candidates = [
+            ("AB=CD", lambda: check(
+                _within(bc_r, 0.618, 0.786, tol),
+                _any_near(cd_ab, (1.0, 1.27, 1.618, 2.0), tol))),
+            ("Gartley", lambda: check(
+                _near(ab_r, 0.618, tol), _within(bc_r, 0.382, 0.886, tol),
+                _within(ad_r, 0.786, 0.886, tol))),
+            ("Bat", lambda: check(
+                _within(ab_r, 0.382, 0.50, tol), _within(bc_r, 0.382, 0.886, tol),
+                _near(ad_r, 0.886, tol))),
+            ("Butterfly", lambda: check(
+                _near(ab_r, 0.786, tol), _within(bc_r, 0.382, 0.886, tol),
+                _within(ad_r, 1.27, 1.618, tol))),
+            ("Crab", lambda: check(
+                _within(ab_r, 0.382, 0.618, tol), _within(bc_r, 0.382, 0.886, tol),
+                _near(ad_r, 1.618, tol))),
+            ("Deep Crab", lambda: check(
+                _near(ab_r, 0.886, tol), _within(bc_r, 0.382, 0.886, tol),
+                _near(ad_r, 1.618, tol))),
+            ("5-0", lambda: check(
+                _within(ab_r, 1.13, 1.618, tol), _within(bc_r, 1.618, 2.24, tol),
+                _near(cd_r, 0.50, tol))),
+            ("Shark", lambda: check(
+                _within(shk_ab, 1.13, 1.618, tol), _within(shk_cd, 1.618, 2.24, tol),
+                (shk_ext >= 1.13 * (1 - tol), max(0.0, 1.13 - shk_ext)))),
+        ]
+        for name, evaluate in candidates:
+            err = evaluate()
+            if err is not None:
+                return name, err
+        return None
+
+
+def _any_near(value: float, targets: tuple, tol: float) -> tuple:
+    """(ok, desviación) respecto al más cercano de varios objetivos puntuales."""
+    best_dev = min(abs(value - t) / t if t else 1.0 for t in targets)
+    return best_dev <= tol, best_dev
