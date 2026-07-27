@@ -209,3 +209,51 @@ class SuperTrendAdxAgent(BaseAgent):
             signal, conf, reason, estimated_risk=40.0, stop_loss=sl, take_profit=tp,
             supertrend=direction, adx=round(adx, 1),
         )
+
+
+@register_agent("alligator")
+class AlligatorAgent(BaseAgent):
+    """Bill Williams Alligator: tres medias suavizadas desplazadas.
+
+    - Jaw  = SMMA(13) desplazada 8   (mandíbula, lenta)
+    - Teeth= SMMA(8)  desplazada 5   (dientes)
+    - Lips = SMMA(5)  desplazada 3   (labios, rápida)
+
+    Alligator "despierto" (líneas ordenadas y abiertas) = tendencia:
+    lips>teeth>jaw -> BUY; lips<teeth<jaw -> SELL. Entrelazadas = "dormido"
+    (rango) -> WAIT (no opera). La convicción crece con la separación.
+    """
+
+    category = "trend"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        df = md.frame(md.primary_tf)
+        if len(df) < 35:
+            return self._wait("Datos insuficientes para Alligator")
+        hl2 = (df["high"] + df["low"]) / 2.0
+        jaw = ind.smma(hl2, 13).shift(8)
+        teeth = ind.smma(hl2, 8).shift(5)
+        lips = ind.smma(hl2, 5).shift(3)
+        j, t, ll = jaw.iloc[-1], teeth.iloc[-1], lips.iloc[-1]
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        price = md.price
+        if np.isnan(j) or np.isnan(t) or np.isnan(ll) or atr <= 0:
+            return self._wait("Alligator no disponible")
+
+        if ll > t > j and price > ll:
+            signal, base = SignalType.BUY, "alcista"
+        elif ll < t < j and price < ll:
+            signal, base = SignalType.SELL, "bajista"
+        else:
+            return self._decision(
+                SignalType.WAIT, 20.0, "Alligator dormido (líneas entrelazadas / rango)",
+                estimated_risk=45.0,
+            )
+
+        sep = abs(ll - j) / atr                 # apertura de la boca
+        conf = min(85.0, 50.0 + sep * 12.0)
+        sl, tp = atr_sl_tp(md.price, md.regime.atr, signal)
+        return self._decision(
+            signal, conf, f"Alligator despierto {base} (apertura {sep:.1f}·ATR)",
+            estimated_risk=40.0, stop_loss=sl, take_profit=tp, mouth_open=round(sep, 2),
+        )

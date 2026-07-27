@@ -90,6 +90,19 @@ def adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return dx.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
 
 
+def smma(series: pd.Series, period: int) -> pd.Series:
+    """Smoothed Moving Average (suavizado de Wilder). Base del Alligator."""
+    return series.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
+
+
+def williams_r(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Williams %R (Larry Williams): oscilador en [-100, 0]."""
+    hh = df["high"].rolling(window=period, min_periods=period).max()
+    ll = df["low"].rolling(window=period, min_periods=period).min()
+    rng = (hh - ll).replace(0.0, np.nan)
+    return -100.0 * (hh - df["close"]) / rng
+
+
 def bollinger(series: pd.Series, period: int = 20, mult: float = 2.0) -> pd.DataFrame:
     """Bandas de Bollinger: media móvil ± `mult` desviaciones estándar."""
     mid = sma(series, period)

@@ -101,6 +101,16 @@ agents:
     period: 10
     mult: 3.0
     min_adx: 20.0
+  williams_r:                     # reversión Williams %R (primo del estocástico)
+    enabled: false
+    period: 14
+    oversold: -80.0
+    overbought: -20.0
+  alligator:                      # Bill Williams Alligator (3 SMMA desplazadas)
+    enabled: false
+  fibonacci:                      # retrocesos de Fib a favor de tendencia
+    enabled: false
+    tol_atr: 0.5                  # cercanía (× ATR) a la zona Fib para entrar
   market_structure:
     swing_length: 5        # estructura de largo plazo
     internal_length: 2     # estructura interna (corto plazo) para confluencia

@@ -217,3 +217,63 @@ class PremiumDiscountAgent(BaseAgent):
             signal, min(70.0, conf), expl, estimated_risk=45.0,
             stop_loss=sl, take_profit=tp, zone_pos=round(pos, 3),
         )
+
+
+@register_agent("fibonacci")
+class FibonacciAgent(BaseAgent):
+    """Retrocesos de Fibonacci del último impulso (entrada a favor de tendencia).
+
+    Toma la última pierna de impulso (dos pivotes alternados) y opera la
+    continuación cuando el precio retrocede a una zona clave (0.5 / 0.618 /
+    0.786): en un impulso alcista, compra en el pullback; en uno bajista, vende.
+    El 0.618 (golden ratio) pesa más. No entra si el retroceso ya rompió el
+    origen del impulso (estructura invalidada).
+    """
+
+    category = "structure"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 40:
+            return self._wait("Datos insuficientes para Fibonacci")
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        swings = st.alternating_swings(st.find_swings(df, 3, 3))
+        if len(swings) < 2:
+            return self._wait("Sin impulso para Fibonacci")
+        a, b = swings[-2], swings[-1]           # a = origen, b = fin del impulso
+        leg = b.price - a.price
+        if abs(leg) < atr:
+            return self._wait("Impulso demasiado pequeño")
+
+        price = md.price
+        up = b.kind == "high"                   # impulso alcista si termina en máximo
+        tol = float(self.config.get("tol_atr", 0.5)) * atr
+        near, best = None, tol + 1
+        for level in (0.5, 0.618, 0.786):
+            lvl_price = b.price - level * leg    # zona de retroceso
+            dist = abs(price - lvl_price)
+            if dist <= tol and dist < best:
+                near, best = level, dist
+        if near is None:
+            return self._decision(SignalType.WAIT, 20.0, "Precio fuera de zonas Fibonacci",
+                                  estimated_risk=40.0)
+
+        # Continuación en la dirección del impulso, si no se rompió el origen.
+        if up and price > a.price:
+            signal = SignalType.BUY
+        elif (not up) and price < a.price:
+            signal = SignalType.SELL
+        else:
+            return self._decision(SignalType.WAIT, 20.0, "Retroceso invalidó el impulso",
+                                  estimated_risk=45.0)
+
+        conf = 62.0 + (12.0 if abs(near - 0.618) < 1e-6 else 0.0)
+        sl, tp = atr_sl_tp(md.price, atr, signal)
+        return self._decision(
+            signal, conf, f"Retroceso {near:.3f} de Fibonacci (continuación {'alcista' if up else 'bajista'})",
+            estimated_risk=45.0, stop_loss=sl, take_profit=tp, fib_level=near,
+        )

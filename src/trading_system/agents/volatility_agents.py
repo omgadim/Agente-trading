@@ -153,3 +153,40 @@ class BollingerStochasticAgent(BaseAgent):
             signal, conf, reason, estimated_risk=50.0, stop_loss=sl, take_profit=tp,
             adx=round(adx, 1) if not np.isnan(adx) else None,
         )
+
+
+@register_agent("williams_r")
+class WilliamsRAgent(BaseAgent):
+    """Williams %R (Larry Williams): reversión por sobrecompra/sobreventa.
+
+    Compra cuando %R sale de sobreventa (cruza al alza -80); vende cuando sale de
+    sobrecompra (cruza a la baja -20). Nota: es primo del Estocástico, así que su
+    aporte puede ser redundante; se valida con backtest.
+    """
+
+    category = "technical"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        df = md.frame(md.primary_tf)
+        period = int(self.config.get("period", 14))
+        if len(df) < period + 3:
+            return self._wait("Datos insuficientes para Williams %R")
+        wr = ind.williams_r(df, period)
+        w, w_prev = wr.iloc[-1], wr.iloc[-2]
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        if np.isnan(w) or np.isnan(w_prev) or atr <= 0:
+            return self._wait("Williams %R no disponible")
+
+        oversold = float(self.config.get("oversold", -80.0))
+        overbought = float(self.config.get("overbought", -20.0))
+        signal, conf, reason = SignalType.WAIT, 20.0, f"Williams %R={w:.0f} (neutral)"
+        if w_prev <= oversold and w > oversold:
+            signal, conf, reason = SignalType.BUY, 62.0, f"%R sale de sobreventa ({w:.0f})"
+        elif w_prev >= overbought and w < overbought:
+            signal, conf, reason = SignalType.SELL, 62.0, f"%R sale de sobrecompra ({w:.0f})"
+
+        sl, tp = atr_sl_tp(md.price, atr, signal)
+        return self._decision(
+            signal, conf, reason, estimated_risk=50.0, stop_loss=sl, take_profit=tp,
+            williams_r=round(float(w), 1),
+        )

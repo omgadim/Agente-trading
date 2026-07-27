@@ -86,3 +86,21 @@ def test_supertrend_direction_down_on_downtrend():
     df = _ohlc(list(np.linspace(200, 100, 80)))
     st = ind.supertrend(df, period=10, mult=3.0)
     assert int(st["trend"].iloc[-1]) == -1
+
+
+def test_williams_r_bounds():
+    df = _ohlc(list(np.linspace(100, 130, 30)) + list(np.linspace(130, 105, 30)))
+    wr = ind.williams_r(df, 14).dropna()
+    assert (wr >= -100.01).all() and (wr <= 0.01).all()
+
+
+def test_williams_r_oversold_on_lows():
+    # Precio en mínimos recientes -> %R cerca de -100 (sobreventa).
+    df = _ohlc(list(np.linspace(130, 100, 30)))
+    assert ind.williams_r(df, 14).iloc[-1] < -70
+
+
+def test_smma_smoother_than_ema():
+    s = pd.Series(np.linspace(1, 100, 60), dtype=float)
+    # SMMA (alpha=1/n) es más lenta que EMA (span=n) en una rampa.
+    assert ind.smma(s, 10).iloc[-1] < ind.ema(s, 10).iloc[-1]

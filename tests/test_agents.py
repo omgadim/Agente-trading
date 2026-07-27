@@ -14,7 +14,7 @@ REAL_AGENTS = [
     "trend_mtf", "momentum", "technical", "volatility", "volume",
     "market_structure", "support_resistance", "candlestick", "session",
     "risk_management", "open_trades_control", "premium_discount",
-    "bollinger_stoch", "supertrend_adx",
+    "bollinger_stoch", "supertrend_adx", "williams_r", "alligator", "fibonacci",
 ]
 
 
@@ -145,3 +145,18 @@ def test_risk_agent_veto_on_extreme_volatility():
                     regime=MarketRegime(atr=80.0))
     decision = AgentRegistry.create("risk_management", {"max_atr_pct": 2.5}).run(md)
     assert decision.metadata.get("veto") is True
+
+
+def test_alligator_buys_on_open_uptrend():
+    # Tendencia alcista sostenida -> lips>teeth>jaw y precio arriba -> BUY.
+    idx = pd.date_range("2024-01-01", periods=80, freq="1h")
+    close = pd.Series([100 + i * 1.0 for i in range(80)], index=idx, dtype=float)
+    df = pd.DataFrame(
+        {"open": close.shift(1).fillna(close.iloc[0]), "high": close + 0.5,
+         "low": close - 0.5, "close": close, "volume": [1000.0] * 80},
+        index=idx,
+    )
+    md = MarketData("XAUUSD", {Timeframe.M5: df}, price=float(close.iloc[-1]),
+                    regime=MarketRegime(atr=2.0))
+    d = AgentRegistry.create("alligator", {}).run(md)
+    assert d.signal is SignalType.BUY
