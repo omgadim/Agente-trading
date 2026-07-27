@@ -172,6 +172,10 @@ agents:
     lookback: 50
     min_abs_corr: 0.3
     threshold: 0.1
+    timeframe: H1
+    # Activos correlacionados con el Oro (deben existir en tu broker MT5).
+    # AUDUSD ~ correlación positiva; USDCHF ~ inversa. El agente mide el signo solo.
+    symbols: [USDCHF, AUDUSD]
   sentiment:
     extreme_long: 70
     extreme_short: 30

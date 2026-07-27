@@ -109,6 +109,34 @@ class InMemoryCorrelationProvider(CorrelationProvider):
         return s.iloc[-lookback:]
 
 
+class MT5CorrelationProvider(CorrelationProvider):
+    """Series de activos correlacionados desde MetaTrader 5 (vía `MT5Client`).
+
+    Baja los cierres de cada símbolo (p. ej. USDCHF, AUDUSD, EURUSD) para que el
+    `CorrelationAgent` mida su correlación con el Oro y derive un sesgo. Los
+    símbolos deben existir en el broker. Tolerante a fallos: si un símbolo no
+    está o falla, devuelve None y el agente lo ignora.
+    """
+
+    def __init__(self, client, symbols: List[str], timeframe) -> None:
+        self.client = client
+        self._symbols = list(symbols)
+        self.timeframe = timeframe
+
+    def symbols(self) -> List[str]:
+        return list(self._symbols)
+
+    def closes(self, symbol: str, lookback: int) -> Optional[pd.Series]:
+        try:
+            df = self.client.rates(symbol, self.timeframe, lookback)
+        except Exception as exc:  # símbolo ausente o error de red
+            _logger.warning("Correlación: sin datos de %s: %s", symbol, exc)
+            return None
+        if df is None or df.empty or "close" not in df.columns:
+            return None
+        return df["close"].iloc[-lookback:]
+
+
 # --------------------------------------------------------------------------- #
 #  Sentimiento (posicionamiento retail)
 # --------------------------------------------------------------------------- #

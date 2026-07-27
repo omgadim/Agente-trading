@@ -86,3 +86,17 @@ def test_live_feed_uses_configured_timeframes(config):
     assert trader.feed.timeframes == (Timeframe.M30, Timeframe.H1, Timeframe.H4)
     # El primario (más fino) es M30 -> mismo timeframe de decisión que el backtest.
     assert min(trader.feed.timeframes, key=lambda t: t.minutes) is Timeframe.M30
+
+
+def test_correlation_provider_wired_in_live(config):
+    # Con symbols en config, el agente correlation recibe un provider MT5.
+    config.setdefault("agents", {}).setdefault("correlation", {})["symbols"] = ["USDCHF", "AUDUSD"]
+    trader, client = build_live_trader(config, mode="paper")
+    corr = next(a for a in trader.supervisor.agents if a.name == "correlation")
+    provider = corr.config.get("provider")
+    assert provider is not None
+    assert set(provider.symbols()) == {"USDCHF", "AUDUSD"}
+    # El provider baja cierres reales del cliente simulado.
+    client.connect()
+    closes = provider.closes("AUDUSD", 30)
+    assert closes is not None and len(closes) > 0

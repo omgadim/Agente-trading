@@ -14,6 +14,7 @@ import os
 from typing import Any, Dict, Optional, Tuple
 
 from .alerts import CompositeNotifier, EmailNotifier, LoggingNotifier, Notifier, TelegramNotifier
+from .context import MT5CorrelationProvider
 from .core.enums import Timeframe
 from .data import SimulatedDataFeed
 from .engine import build_agents, build_weighting
@@ -179,4 +180,23 @@ def build_live_trader(
         notifier=build_notifier(config),
         cards_path=live_cfg.get("cards_path"),
     )
+    _wire_correlation(trader, client, config)
     return trader, client
+
+
+def _wire_correlation(trader: LiveTrader, client: MT5Client, config: Dict[str, Any]) -> None:
+    """Inyecta un provider de correlación (símbolos MT5) al agente `correlation`.
+
+    Los símbolos (USDCHF, AUDUSD...) se toman de `agents.correlation.symbols` y se
+    bajan del broker vía el cliente. Sin símbolos configurados, el agente sigue
+    inerte (WAIT). Es solo-live: en backtest no interviene.
+    """
+    corr_cfg = (config.get("agents", {}) or {}).get("correlation", {}) or {}
+    symbols = corr_cfg.get("symbols")
+    if not symbols:
+        return
+    tf = Timeframe[corr_cfg.get("timeframe", "H1")]
+    provider = MT5CorrelationProvider(client, symbols, tf)
+    for agent in trader.supervisor.agents:
+        if agent.name == "correlation":
+            agent.config["provider"] = provider
