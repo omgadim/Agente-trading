@@ -93,6 +93,8 @@ agents:
     swing_length: 5        # estructura de largo plazo
     internal_length: 2     # estructura interna (corto plazo) para confluencia
   premium_discount:
+    enabled: false         # DESACTIVADO: contrarian, resta en un activo tendencial
+                           # (backtest 4.7a: -36% de beneficio). Reactivar con cuidado.
     lookback: 50
     discount: 0.25         # zona baja del rango (favorece compras)
     premium: 0.75          # zona alta del rango (favorece ventas)
