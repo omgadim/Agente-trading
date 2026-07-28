@@ -8,10 +8,12 @@ from ..core import (
     BaseAgent,
     MarketData,
     SignalType,
+    Timeframe,
     VolatilityRegime,
     register_agent,
 )
 from ..data import indicators as ind
+from ..data import structure as st
 from .helpers import atr_sl_tp
 
 
@@ -190,3 +192,68 @@ class WilliamsRAgent(BaseAgent):
             signal, conf, reason, estimated_risk=50.0, stop_loss=sl, take_profit=tp,
             williams_r=round(float(w), 1),
         )
+
+
+@register_agent("rsi_divergence")
+class RsiDivergenceAgent(BaseAgent):
+    """Divergencia precio/RSI en los pivotes (idea del indicador de divergencia).
+
+    Divergencia REGULAR (reversión), con las definiciones estándar corregidas:
+      - Bajista (SELL): precio hace un máximo más alto pero el RSI un máximo más bajo.
+      - Alcista (BUY):  precio hace un mínimo más bajo pero el RSI un mínimo más alto.
+
+    Es una señal CONTRARIAN: el meta-modelo aprende dónde pesarla y el risk manager
+    le impone SL/TP (ATR 1.0/2.5) y el 1%. Con `max_adx` opcional solo opera en
+    rango (ADX bajo), donde las reversiones rinden mejor que en tendencia.
+    """
+
+    category = "momentum"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 60:
+            return self._wait("Datos insuficientes para divergencia")
+
+        pivot = int(self.config.get("pivot", 5))
+        rsi_period = int(self.config.get("rsi_period", 14))
+        min_gap = float(self.config.get("min_rsi_gap", 3.0))
+        max_bars = int(self.config.get("max_bars", 8))
+        max_adx = self.config.get("max_adx")
+
+        if max_adx is not None:
+            adx = ind.adx(df, 14).to_numpy()
+            if len(adx) and not np.isnan(adx[-1]) and adx[-1] > float(max_adx):
+                return self._wait(f"ADX {adx[-1]:.0f}: sin reversión en tendencia")
+
+        rsi = ind.rsi(df["close"], rsi_period).to_numpy()
+        swings = st.find_swings(df, pivot, pivot)
+        highs = [s for s in swings if s.kind == "high"]
+        lows = [s for s in swings if s.kind == "low"]
+        n = len(df)
+
+        signal = SignalType.WAIT; conf = 0.0; expl = ""
+        if len(highs) >= 2:
+            h1, h2 = highs[-2], highs[-1]
+            r1, r2 = rsi[h1.pos], rsi[h2.pos]
+            if n - 1 - h2.pos <= max_bars and h2.price > h1.price and r2 < r1 - min_gap:
+                signal = SignalType.SELL
+                conf = 45.0 + min(30.0, r1 - r2)
+                if r1 >= 65.0:
+                    conf = min(85.0, conf + 8.0)
+                expl = f"Divergencia bajista: precio HH, RSI {r1:.0f}->{r2:.0f}"
+        if signal is SignalType.WAIT and len(lows) >= 2:
+            l1, l2 = lows[-2], lows[-1]
+            r1, r2 = rsi[l1.pos], rsi[l2.pos]
+            if n - 1 - l2.pos <= max_bars and l2.price < l1.price and r2 > r1 + min_gap:
+                signal = SignalType.BUY
+                conf = 45.0 + min(30.0, r2 - r1)
+                if r1 <= 35.0:
+                    conf = min(85.0, conf + 8.0)
+                expl = f"Divergencia alcista: precio LL, RSI {r1:.0f}->{r2:.0f}"
+
+        if signal is SignalType.WAIT:
+            return self._wait("Sin divergencia precio/RSI")
+        sl, tp = atr_sl_tp(md.price, md.regime.atr, signal)
+        return self._decision(signal, conf, expl, estimated_risk=48.0,
+                              stop_loss=sl, take_profit=tp)
