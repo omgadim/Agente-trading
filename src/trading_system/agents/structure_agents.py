@@ -277,3 +277,90 @@ class FibonacciAgent(BaseAgent):
             signal, conf, f"Retroceso {near:.3f} de Fibonacci (continuación {'alcista' if up else 'bajista'})",
             estimated_risk=45.0, stop_loss=sl, take_profit=tp, fib_level=near,
         )
+
+
+@register_agent("coast")
+class CoastAgent(BaseAgent):
+    """"Trading in the Coast" (Ferran Font) — SOLO la señal de entrada.
+
+    Porta la lógica de entrada del sistema: rotura *con decisión* de un nivel S/R
+    (cuerpo > body_mult×ATR) seguida de un **retest** del nivel roto, con refuerzo
+    por *Auction Market Theory* (varios intentos fallidos en el nivel antes de
+    romperlo → convicción de rotura del "canal").
+
+    Se DESCARTA por diseño la gestión del sistema original (sin stop, scale-in,
+    aguantar la perdedora): aquí el agente solo VOTA y el risk manager del sistema
+    le impone SL/TP (ATR 1.0/2.5) y el 1% de riesgo como a cualquier otro agente.
+    """
+
+    category = "structure"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 60:
+            return self._wait("Datos insuficientes para Coast")
+
+        pivot = int(self.config.get("pivot", 8))
+        body_mult = float(self.config.get("body_mult", 1.3))
+        retest_max = int(self.config.get("retest_max_bars", 20))
+        tol = float(self.config.get("retest_tol_pct", 0.10)) / 100.0
+        fail_threshold = int(self.config.get("fail_threshold", 3))
+        window = int(self.config.get("lookback", 120))
+
+        atr = md.regime.atr
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        d = df.iloc[-window:] if len(df) > window else df
+        o = d["open"].to_numpy(); c = d["close"].to_numpy()
+        h = d["high"].to_numpy(); low = d["low"].to_numpy()
+        n = len(d)
+        swings = st.find_swings(d, pivot, pivot)
+        res = [(s.pos, s.price) for s in swings if s.kind == "high"]
+        sup = [(s.pos, s.price) for s in swings if s.kind == "low"]
+
+        best = None  # (signal, level, decisiveness, fails)
+        lo_b = max(1, n - retest_max - 1)
+        # Rotura+retest alcista: cierre cruza una resistencia previa con cuerpo decisivo
+        for b in range(n - 1, lo_b - 1, -1):
+            if abs(c[b] - o[b]) <= body_mult * atr:
+                continue
+            for pos, R in res:
+                if pos >= b - pivot or R <= 0:
+                    continue
+                if c[b] > R and c[b - 1] <= R and c[-1] > R and low[b:].min() <= R * (1 + tol):
+                    fails = sum(1 for p, pr in res if p < b and abs(pr - R) / R <= tol)
+                    best = (SignalType.BUY, R, abs(c[b] - o[b]) / atr, fails)
+                    break
+            if best:
+                break
+        if best is None:  # rotura+retest bajista
+            for b in range(n - 1, lo_b - 1, -1):
+                if abs(c[b] - o[b]) <= body_mult * atr:
+                    continue
+                for pos, S in sup:
+                    if pos >= b - pivot or S <= 0:
+                        continue
+                    if c[b] < S and c[b - 1] >= S and c[-1] < S and h[b:].max() >= S * (1 - tol):
+                        fails = sum(1 for p, pr in sup if p < b and abs(pr - S) / S <= tol)
+                        best = (SignalType.SELL, S, abs(c[b] - o[b]) / atr, fails)
+                        break
+                if best:
+                    break
+
+        if best is None:
+            return self._wait("Sin rotura+retest de nivel")
+
+        signal, level, decisiveness, fails = best
+        conf = 45.0 + min(25.0, (decisiveness - 1.0) * 20.0)
+        if fails >= fail_threshold:      # Auction Market Theory: 3+ intentos fallidos
+            conf = min(85.0, conf + 15.0)
+        amt = f" +AMT({fails})" if fails >= fail_threshold else ""
+        expl = (f"Coast: rotura+retest {'alcista' if signal is SignalType.BUY else 'bajista'} "
+                f"de {level:.2f} (cuerpo {decisiveness:.1f}×ATR{amt})")
+        sl, tp = atr_sl_tp(md.price, atr, signal)
+        return self._decision(
+            signal, conf, expl, estimated_risk=42.0, stop_loss=sl, take_profit=tp,
+            level=level, fails=fails,
+        )
