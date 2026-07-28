@@ -28,7 +28,9 @@ mt5:
 # mismas tablas que lee el dashboard PHP). Credenciales MySQL por variables
 # de entorno DB_* (ver .env.example).
 persistence:
-  enabled: false
+  enabled: true           # ON para la demo: registra operaciones/decisiones en
+                          # SQLite (sin dependencias) para el monitor HTML y la
+                          # atribución por agente. Ponlo en false para tests/dev.
   backend: sqlite         # sqlite | mysql
   sqlite_path: data/trading.db
 
