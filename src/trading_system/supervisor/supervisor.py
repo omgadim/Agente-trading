@@ -98,8 +98,8 @@ class Supervisor:
         # Riesgo consolidado: media ponderada de estimated_risk de todos.
         risk = self._weighted_risk(decisions, weights)
 
-        # Veto agregado (p. ej. agente de riesgo o noticias): fuerza WAIT.
-        vetoed, veto_reason = self._check_veto(decisions)
+        # Veto agregado (riesgo/noticias = bloqueo total; correlación = direccional).
+        vetoed, veto_reason = self._check_veto(decisions, signal)
         if vetoed:
             signal = SignalType.WAIT
 
@@ -172,10 +172,20 @@ class Supervisor:
         return (num / den) if den > 0 else 50.0
 
     @staticmethod
-    def _check_veto(decisions: Sequence[AgentDecision]):
+    def _check_veto(decisions: Sequence[AgentDecision], signal: SignalType = SignalType.WAIT):
+        """Veto de bloqueo total (metadata['veto']) o DIRECCIONAL.
+
+        Un agente puede vetar solo una dirección con metadata['veto_signal'] =
+        SignalType.BUY/SELL: cancela la operación únicamente si la señal agregada
+        coincide con esa dirección (p. ej. correlación que solo frena compras
+        cuando la cesta contradice con fuerza, sin bloquear las ventas).
+        """
         for d in decisions:
             if d.metadata.get("veto"):
                 return True, d.metadata.get("veto_reason") or f"Veto de {d.agent_name}"
+            vs = d.metadata.get("veto_signal")
+            if vs is not None and signal is not SignalType.WAIT and vs is signal:
+                return True, d.metadata.get("veto_reason") or f"Veto direccional de {d.agent_name}"
         return False, None
 
     @staticmethod

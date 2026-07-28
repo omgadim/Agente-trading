@@ -255,3 +255,70 @@ class NewsFlowAgent(BaseAgent):
             f"Flujo de noticias normal ({len(headlines)} en {window} min)",
             estimated_risk=30.0, headline_count=len(headlines),
         )
+
+
+@register_agent("correlation_veto")
+class CorrelationVetoAgent(BaseAgent):
+    """Correlación como VETO direccional (NO vota dirección).
+
+    Deriva un sesgo de la cesta de activos correlacionados (igual que
+    `CorrelationAgent`: `bias = media(corr_i · momentum_i)`), pero no propone
+    compra ni venta: solo **veta** la dirección que la cesta contradice con
+    fuerza. Sesgo muy bajista → veta COMPRAS; muy alcista → veta VENTAS; en zona
+    neutral no interviene. Más seguro que el voto: solo frena en casos extremos.
+    Con `config['provider']`; sin proveedor queda inerte (WAIT sin veto).
+    """
+
+    category = "context"
+
+    def _provider(self) -> Optional[CorrelationProvider]:
+        return self.config.get("provider")
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        provider = self._provider()
+        if provider is None:
+            return self._decision(SignalType.WAIT, 0.0,
+                                  "Sin proveedor de correlaciones", estimated_risk=50.0)
+        lookback = int(self.config.get("lookback", 50))
+        min_abs_corr = float(self.config.get("min_abs_corr", 0.3))
+        veto_th = float(self.config.get("veto_threshold", 0.35))
+        gold_ret = md.closes(md.primary_tf).iloc[-lookback:].pct_change().dropna()
+        if len(gold_ret) < 10:
+            return self._decision(SignalType.WAIT, 0.0, "Serie insuficiente", estimated_risk=45.0)
+
+        contribs = []; detail = []
+        for symbol in provider.symbols():
+            closes = provider.closes(symbol, lookback)
+            if closes is None or len(closes) < 12:
+                continue
+            rel = closes.pct_change().dropna()
+            n = min(len(gold_ret), len(rel))
+            if n < 10:
+                continue
+            g = gold_ret.iloc[-n:].to_numpy(); r = rel.iloc[-n:].to_numpy()
+            if g.std() == 0 or r.std() == 0:
+                continue
+            corr = float(np.corrcoef(g, r)[0, 1])
+            if abs(corr) < min_abs_corr:
+                continue
+            contribs.append(corr * float(np.tanh(r[-5:].sum() / (r.std() + 1e-9))))
+            detail.append(f"{symbol}({corr:+.2f})")
+
+        if not contribs:
+            return self._decision(SignalType.WAIT, 0.0,
+                                  "Sin correlaciones significativas", estimated_risk=45.0)
+        bias = float(np.mean(contribs))
+        if bias <= -veto_th:
+            return self._decision(
+                SignalType.WAIT, 0.0,
+                f"Cesta bajista {bias:+.2f} [{', '.join(detail)}]: veta COMPRAS",
+                estimated_risk=60.0, veto_signal=SignalType.BUY,
+                veto_reason=f"Correlación bajista {bias:+.2f}")
+        if bias >= veto_th:
+            return self._decision(
+                SignalType.WAIT, 0.0,
+                f"Cesta alcista {bias:+.2f} [{', '.join(detail)}]: veta VENTAS",
+                estimated_risk=60.0, veto_signal=SignalType.SELL,
+                veto_reason=f"Correlación alcista {bias:+.2f}")
+        return self._decision(SignalType.WAIT, 0.0,
+                              f"Cesta neutral {bias:+.2f}: sin veto", estimated_risk=45.0)
