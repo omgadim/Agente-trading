@@ -83,3 +83,63 @@ class MachineLearningAgent(BaseAgent):
             estimated_risk=45.0, stop_loss=sl, take_profit=tp,
             prob_up=prob_up, model=self.model_name,
         )
+
+
+@register_agent("ml_v2")
+class MachineLearningV2Agent(BaseAgent):
+    """ML mejorado: features multi-timeframe + etiqueta triple-barrera.
+
+    Igual arquitectura que `machine_learning` pero con la base reforzada
+    (`ml.features_v2`): contexto de H1/H4 y etiqueta alineada al SL/TP real
+    (¿toca antes el TP o el SL?). Modelo por defecto gradient boosting. Registrado
+    para A/B; se activa solo si supera el baseline en walk-forward.
+    """
+
+    category = "ml"
+
+    def __init__(self, name: str, config=None) -> None:
+        super().__init__(name, config)
+        self.model_name = self.config.get("model", "gboosting")
+        self.horizon = int(self.config.get("horizon", 12))
+        self.margin = float(self.config.get("margin", 0.10))
+        self.retrain_every = int(self.config.get("retrain_every", 100))
+        self.min_train = int(self.config.get("min_train", 200))
+        self.max_train_window = self.config.get("max_train_window", 3000)
+        self.barrier_mult = float(self.config.get("barrier_mult", 1.5))
+        self._model = None
+        self._calls = 0
+        self._n_train = 0
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        from ..ml.features_v2 import build_dataset_v2, last_feature_vector_v2
+        df = md.frame(md.primary_tf)
+        if self.max_train_window:
+            df = df.iloc[-(int(self.max_train_window) + self.horizon):]
+        if len(df) < self.min_train + 60:
+            return self._wait(f"Datos insuficientes para ML v2 (n={len(df)})")
+        X, y, _ = build_dataset_v2(df, self.horizon, self.barrier_mult)
+        if len(X) < self.min_train or len(np.unique(y)) < 2:
+            return self._wait(f"Dataset insuficiente ML v2 (n={len(X)})")
+
+        if self._model is None or self._calls % self.retrain_every == 0:
+            try:
+                self._model = create_model(self.model_name).fit(X, y)
+                self._n_train = len(X)
+            except ModelError as exc:
+                return self._wait(f"Entrenamiento ML v2 falló: {exc}")
+        self._calls += 1
+
+        prob_up = float(self._model.predict_proba(last_feature_vector_v2(df))[0])
+        if prob_up > 0.5 + self.margin:
+            signal = SignalType.BUY; confidence = min(100.0, (prob_up - 0.5) * 200.0)
+        elif prob_up < 0.5 - self.margin:
+            signal = SignalType.SELL; confidence = min(100.0, (0.5 - prob_up) * 200.0)
+        else:
+            return self._decision(SignalType.WAIT, 0.0,
+                                  f"ML v2 indeciso (P={prob_up:.2f})", estimated_risk=50.0,
+                                  prob_up=prob_up)
+        sl, tp = atr_sl_tp(md.price, md.regime.atr, signal)
+        return self._decision(signal, confidence,
+                              f"ml_v2/{self.model_name}: P_gana={prob_up:.2f} (n={self._n_train})",
+                              estimated_risk=45.0, stop_loss=sl, take_profit=tp,
+                              prob_up=prob_up, model=self.model_name)
