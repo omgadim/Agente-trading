@@ -31,7 +31,7 @@ instruments:
     sqlite_path: data/trading_NAS100.db
     cards_path: logs/decisiones_NAS100.log
   JPN225:
-    enabled: false          # 3er motor recomendado (diversifica de Oro Y de US)
+    enabled: true           # 3er motor recomendado (diversifica de Oro Y de US)
     symbol: JPN225
     contract_size: 1.0      # VERIFICA en tu broker
     max_spread: 25.0
