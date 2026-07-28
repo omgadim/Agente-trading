@@ -14,6 +14,10 @@ $Interval = 60              # <-- segundos entre revisiones
 # --- No toques debajo de esta línea -----------------------------------------
 Set-Location -Path $PSScriptRoot
 
+# Forzar que se importe el codigo de ESTA carpeta (src local), aunque exista
+# una instalacion vieja de pip apuntando a otra ruta. PYTHONPATH gana en sys.path.
+$env:PYTHONPATH = Join-Path $PSScriptRoot 'src'
+
 Write-Host "Cuenta:  $Login @ $Server" -ForegroundColor Cyan
 Write-Host "IMPORTANTE: usa la contraseña MASTER (no la de investor)." -ForegroundColor Yellow
 $sec = Read-Host 'Contrasena MASTER de MT5' -AsSecureString
