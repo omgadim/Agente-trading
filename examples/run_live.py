@@ -35,10 +35,17 @@ def main() -> None:
     ap.add_argument("--advance", type=int, default=6, help="Barras a avanzar por ciclo (paper)")
     ap.add_argument("--relax-guard", action="store_true",
                     help="Paper: ignora calendario/horario del guardián (para pruebas)")
+    ap.add_argument("--instrument", default=None,
+                    help="Perfil de instrumento (config.instruments); ej. NAS100. "
+                         "Sin esto usa el símbolo base del config (Oro).")
     args = ap.parse_args()
 
     setup_logging("INFO")
     config = load_config(Path(__file__).resolve().parents[1] / "config" / "config.yaml")
+    if args.instrument:
+        from trading_system.runtime import apply_instrument
+        config = apply_instrument(config, args.instrument)
+        logger.info("Instrumento: %s", args.instrument)
     if args.relax_guard:
         g = config.setdefault("guards", {})
         g["allow_weekend"] = True

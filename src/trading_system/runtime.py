@@ -35,6 +35,43 @@ logger = logging.getLogger("runtime")
 
 
 # --------------------------------------------------------------------------- #
+#  Multi-instrumento
+# --------------------------------------------------------------------------- #
+def apply_instrument(config: Dict[str, Any], name: str) -> Dict[str, Any]:
+    """Aplica el perfil de un instrumento (`instruments.<name>`) sobre el config.
+
+    Cada instrumento corre en su propia instancia. El perfil sobreescribe lo que
+    es específico del activo (símbolo del broker, tamaño de contrato, spread
+    máximo del guardián, y ficheros propios de persistencia/fichas) SIN tocar la
+    estrategia (agentes, pesos, riesgo %). Devuelve una copia; no muta el original.
+    """
+    import copy
+
+    instruments = (config.get("instruments") or {})
+    profile = instruments.get(name)
+    if profile is None:
+        raise ValueError(f"Instrumento '{name}' no está en config.instruments "
+                         f"(disponibles: {list(instruments)})")
+    cfg = copy.deepcopy(config)
+    cfg["symbol"] = profile.get("symbol", name)
+    if "contract_size" in profile:
+        cfg.setdefault("risk", {})["contract_size"] = profile["contract_size"]
+    if "max_spread" in profile:
+        cfg.setdefault("guards", {})["max_spread"] = profile["max_spread"]
+    if "sqlite_path" in profile:
+        cfg.setdefault("persistence", {})["sqlite_path"] = profile["sqlite_path"]
+    if "cards_path" in profile:
+        cfg.setdefault("live", {})["cards_path"] = profile["cards_path"]
+    return cfg
+
+
+def enabled_instruments(config: Dict[str, Any]) -> list:
+    """Nombres de los instrumentos con `enabled: true` en config.instruments."""
+    return [n for n, p in (config.get("instruments") or {}).items()
+            if (p or {}).get("enabled", False)]
+
+
+# --------------------------------------------------------------------------- #
 #  Componentes individuales
 # --------------------------------------------------------------------------- #
 def build_notifier(config: Dict[str, Any]) -> Optional[Notifier]:

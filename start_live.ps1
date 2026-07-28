@@ -1,39 +1,43 @@
 # ============================================================================
-#  Arranque del sistema en vivo (Windows / VPS, sin Docker)
-#  Uso:  clic derecho -> "Ejecutar con PowerShell"   o   .\start_live.ps1
+#  Arranque de UNA instancia en vivo (Windows / VPS, sin Docker)
+#  Uso:
+#     .\start_live.ps1                 -> instrumento base (Oro)
+#     .\start_live.ps1 -Instrument NAS100
 #
-#  Pide la contraseña MASTER de MT5 al arrancar (NO se guarda en disco ni en
-#  el repo). Edita LOGIN y SERVER una sola vez con los datos de tu cuenta.
+#  Pide la contraseña MASTER de MT5 al arrancar (NO se guarda en disco ni en el
+#  repo). Edita Login y Server una vez con los datos de tu cuenta.
 # ============================================================================
+param(
+    [string]$Instrument = "",
+    [int]$Interval = 60
+)
 
 # --- Datos de tu cuenta MT5 (edítalos una vez) ------------------------------
 $Login  = '153546'          # <-- número de cuenta MT5
 $Server = 'VexPro-Server'   # <-- servidor del broker
-$Interval = 60              # <-- segundos entre revisiones
 
 # --- No toques debajo de esta línea -----------------------------------------
 Set-Location -Path $PSScriptRoot
-
-# Forzar que se importe el codigo de ESTA carpeta (src local), aunque exista
-# una instalacion vieja de pip apuntando a otra ruta. PYTHONPATH gana en sys.path.
 $env:PYTHONPATH = Join-Path $PSScriptRoot 'src'
 
+$label = if ($Instrument) { $Instrument } else { "Oro (base)" }
+Write-Host "Instrumento: $label" -ForegroundColor Cyan
 Write-Host "Cuenta:  $Login @ $Server" -ForegroundColor Cyan
-Write-Host "IMPORTANTE: usa la contraseña MASTER (no la de investor)." -ForegroundColor Yellow
+Write-Host "IMPORTANTE: usa la contrasena MASTER (no la de investor)." -ForegroundColor Yellow
 $sec = Read-Host 'Contrasena MASTER de MT5' -AsSecureString
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
-$plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+$env:MT5_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
 [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-
-$env:MT5_LOGIN    = $Login
-$env:MT5_SERVER   = $Server
-$env:MT5_PASSWORD = $plain
+$env:MT5_LOGIN  = $Login
+$env:MT5_SERVER = $Server
 
 Write-Host "`nRecordatorio: activa 'Algo Trading' en MT5 (Ctrl+E, circulo verde)." -ForegroundColor Yellow
-Write-Host "Lanzando operativa en vivo...`n" -ForegroundColor Green
+Write-Host "Lanzando...`n" -ForegroundColor Green
 
-python -m examples.run_live --mode live --interval $Interval
+if ($Instrument) {
+    python -m examples.run_live --mode live --interval $Interval --instrument $Instrument
+} else {
+    python -m examples.run_live --mode live --interval $Interval
+}
 
-# limpia la contraseña de la sesion al terminar
 $env:MT5_PASSWORD = $null
-$plain = $null
