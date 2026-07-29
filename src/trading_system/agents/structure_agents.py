@@ -6,6 +6,7 @@ from datetime import timezone
 import numpy as np
 
 from ..core import AgentDecision, BaseAgent, MarketData, SignalType, Timeframe, register_agent
+from ..core.enums import TrendDirection
 from ..data import indicators as ind
 from ..data import structure as st
 from .helpers import atr_sl_tp
@@ -98,6 +99,83 @@ class SupportResistanceAgent(BaseAgent):
             signal, conf, expl, estimated_risk=45.0, stop_loss=sl, take_profit=tp,
             support=None if np.isnan(nearest_sup) else float(nearest_sup),
             resistance=None if np.isnan(nearest_res) else float(nearest_res),
+        )
+
+
+@register_agent("range_reversion")
+class RangeReversionAgent(BaseAgent):
+    """Reversión en rango sobre niveles S/R (comprar soporte / vender resistencia).
+
+    Ataca justo el punto débil del sistema tendencial: los mercados laterales,
+    donde seguir tendencia pierde. **Solo vota cuando el régimen es RANGE** (para
+    no pelear con las tendencias que el resto del panel ya explota bien); en
+    tendencia se queda callado (WAIT). Compra cuando el precio se apoya en el
+    soporte y apunta el objetivo a la resistencia (y viceversa), con SL ajustado
+    pasado el nivel. Exige una relación beneficio/riesgo mínima para no tomar
+    reversiones estrechas que el spread se comería.
+    """
+
+    category = "structure"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        # 1) Filtro de régimen: solo reversión en rango.
+        if md.regime.trend is not TrendDirection.RANGE:
+            return self._wait("Fuera de rango (régimen con tendencia)")
+
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 40:
+            return self._wait("Datos insuficientes para rango")
+
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        price = md.price
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        swing = int(self.config.get("swing", 3))
+        highs = df["high"][ind.swing_highs(df["high"], swing, swing)]
+        lows = df["low"][ind.swing_lows(df["low"], swing, swing)]
+        if highs.empty or lows.empty:
+            return self._wait("Sin niveles S/R válidos")
+
+        nearest_res = highs[highs >= price].min() if (highs >= price).any() else np.nan
+        nearest_sup = lows[lows <= price].max() if (lows <= price).any() else np.nan
+        if np.isnan(nearest_res) or np.isnan(nearest_sup):
+            return self._wait("Precio fuera del rango de swings")
+
+        tol = float(self.config.get("tol_atr", 0.5)) * atr
+        sl_mult = float(self.config.get("sl_mult", 1.0))
+        exit_buf = float(self.config.get("exit_buffer_atr", 0.5)) * atr
+        min_rr = float(self.config.get("min_rr", 1.2))
+        width = nearest_res - nearest_sup
+        if width < 2.0 * atr:  # rango demasiado estrecho: sin recorrido útil
+            return self._wait("Rango demasiado estrecho")
+
+        # 2) Apoyo en soporte -> BUY hacia la resistencia; rechazo en resistencia
+        #    -> SELL hacia el soporte. SL pasado el nivel; TP con colchón antes del
+        #    nivel opuesto. Solo si el beneficio/riesgo supera el mínimo.
+        if (price - nearest_sup) <= tol:
+            sl = nearest_sup - sl_mult * atr
+            tp = nearest_res - exit_buf
+            risk, reward = price - sl, tp - price
+            if reward <= 0 or risk <= 0 or reward / risk < min_rr:
+                return self._wait("Reversión alcista sin beneficio/riesgo suficiente")
+            signal, expl = SignalType.BUY, f"Apoyo en soporte {nearest_sup:.2f} -> resistencia {nearest_res:.2f}"
+        elif (nearest_res - price) <= tol:
+            sl = nearest_res + sl_mult * atr
+            tp = nearest_sup + exit_buf
+            risk, reward = sl - price, price - tp
+            if reward <= 0 or risk <= 0 or reward / risk < min_rr:
+                return self._wait("Reversión bajista sin beneficio/riesgo suficiente")
+            signal, expl = SignalType.SELL, f"Rechazo en resistencia {nearest_res:.2f} -> soporte {nearest_sup:.2f}"
+        else:
+            return self._wait("Precio en el centro del rango (sin nivel cercano)")
+
+        # Confianza según lo holgado del beneficio/riesgo (1.2->55, 3.0->85).
+        conf = max(55.0, min(85.0, 40.0 + 15.0 * (reward / risk)))
+        return self._decision(
+            signal, conf, expl, estimated_risk=48.0, stop_loss=sl, take_profit=tp,
+            support=float(nearest_sup), resistance=float(nearest_res),
         )
 
 

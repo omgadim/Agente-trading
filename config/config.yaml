@@ -188,6 +188,13 @@ agents:
     discount: 0.25         # zona baja del rango (favorece compras)
     premium: 0.75          # zona alta del rango (favorece ventas)
   support_resistance: {}
+  range_reversion:                # reversión S/R SOLO en rango (compra soporte/vende
+    enabled: false                # resistencia). Se valida con backtest antes de activar.
+    swing: 3                      # ventana de swings para los niveles S/R
+    tol_atr: 0.5                  # cercanía (× ATR) al nivel para entrar
+    sl_mult: 1.0                  # SL = nivel ± sl_mult·ATR (pasado el nivel)
+    exit_buffer_atr: 0.5          # TP con colchón (× ATR) antes del nivel opuesto
+    min_rr: 1.2                   # beneficio/riesgo mínimo para tomar la reversión
   candlestick: { enabled: false }  # flojo (backtest 4.7a): quitarlo sube el PF
   session: {}
   risk_management:
