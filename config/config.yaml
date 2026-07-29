@@ -28,6 +28,12 @@ instruments:
     symbol: NAS100
     contract_size: 10.0     # verificado en broker (Especificación): 10/lote
     max_spread: 5.0
+    # Gestión propia: el break-even a 1.0 ATR scratcheaba ~28% de los trades
+    # (medido con gestión simulada). Walk-forward fiel NAS100 (5 folds, aprendizaje
+    # ON): be1.0 daba PF 0.935/neto -216 (perdedor); be_off + trailing 3 ATR da
+    # PF 1.022/neto +109 y 4/5 folds. Ojo: aun arreglado el edge es fino (PF ~1.02).
+    be_trigger: 999.0       # 999 = break-even DESACTIVADO (no ahogar el trade pronto)
+    trail_trigger: 3.0      # proteger con trailing solo a partir de 3 ATR de ganancia
     sqlite_path: data/trading_NAS100.db
     cards_path: logs/decisiones_NAS100.log
   JPN225:
