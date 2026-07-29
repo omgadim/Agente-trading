@@ -192,29 +192,45 @@ class RealMT5Client(MT5Client):
                 "Instálalo en el entorno de producción para el modo live."
             ) from exc
 
-        kwargs = {}
+        base = {}
         if self.path:
-            kwargs["path"] = self.path
+            base["path"] = self.path
+        login_kwargs = dict(base)
         if self.login:
-            kwargs.update(login=self.login, password=self.password, server=self.server)
+            login_kwargs.update(login=self.login, password=self.password, server=self.server)
 
         last_err = None
         for attempt in range(1, self.retries + 1):
-            if mt5.initialize(**kwargs):
-                self._mt5 = mt5
-                self._tf_map = {
-                    Timeframe.M1: mt5.TIMEFRAME_M1,
-                    Timeframe.M5: mt5.TIMEFRAME_M5,
-                    Timeframe.M15: mt5.TIMEFRAME_M15,
-                    Timeframe.M30: mt5.TIMEFRAME_M30,
-                    Timeframe.H1: mt5.TIMEFRAME_H1,
-                    Timeframe.H4: mt5.TIMEFRAME_H4,
-                    Timeframe.D1: mt5.TIMEFRAME_D1,
-                }
+            # 1) ATTACH primero: adjuntarse a un terminal ya abierto y autorizado
+            #    SIN re-loguear. Es clave para correr varias instancias (una por
+            #    instrumento) contra el MISMO terminal/cuenta sin la carrera de
+            #    logins que devuelve "-6 Authorization failed": solo la primera
+            #    instancia (o el propio terminal) autentica; las demás se adjuntan.
+            if mt5.initialize(**base):
+                info = mt5.account_info()
+                if info is not None and (not self.login or info.login == self.login):
+                    self._finish_connect(mt5)
+                    return
+                mt5.shutdown()  # terminal abierto pero sin la sesión esperada
+            # 2) LOGIN explícito (solo si tenemos credenciales): abre/autentica.
+            if self.login and mt5.initialize(**login_kwargs):
+                self._finish_connect(mt5)
                 return
             last_err = mt5.last_error()
             time.sleep(2 ** attempt)
         raise ExecutionError(f"initialize() falló tras {self.retries} intentos: {last_err}")
+
+    def _finish_connect(self, mt5) -> None:  # pragma: no cover - requiere terminal MT5
+        self._mt5 = mt5
+        self._tf_map = {
+            Timeframe.M1: mt5.TIMEFRAME_M1,
+            Timeframe.M5: mt5.TIMEFRAME_M5,
+            Timeframe.M15: mt5.TIMEFRAME_M15,
+            Timeframe.M30: mt5.TIMEFRAME_M30,
+            Timeframe.H1: mt5.TIMEFRAME_H1,
+            Timeframe.H4: mt5.TIMEFRAME_H4,
+            Timeframe.D1: mt5.TIMEFRAME_D1,
+        }
 
     def shutdown(self) -> None:  # pragma: no cover - requiere terminal MT5
         if self._mt5 is not None:
