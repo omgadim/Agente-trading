@@ -140,10 +140,55 @@ class XGBoostModel(Model):
         return self._clf.predict_proba(np.atleast_2d(X))[:, 1]
 
 
+class LorentzianModel(Model):
+    """Clasificación Lorentziana (k-NN con distancia Lorentziana).
+
+    Como el clasificador de TradingView (jdehorty): estandariza las features y usa
+    la distancia de Lorentz `d(x,y)=Σ log(1+|x_i-y_i|)`, que "encoge" las grandes
+    diferencias y es más robusta al ruido/outliers que la euclídea. La probabilidad
+    es la fracción de los `k` vecinos más cercanos que son clase 1. Sin librerías
+    externas (numpy puro), ligero para el VPS.
+    """
+
+    name = "lorentzian"
+
+    def __init__(self, k: int = 8) -> None:
+        self.k = k
+        self._X: np.ndarray | None = None
+        self._y: np.ndarray | None = None
+        self._mu: np.ndarray | None = None
+        self._sigma: np.ndarray | None = None
+
+    def fit(self, X, y) -> "LorentzianModel":
+        X = np.asarray(X, dtype=float); y = np.asarray(y, dtype=float)
+        if X.ndim != 2 or len(X) != len(y):
+            raise ModelError("Dimensiones de X/y inválidas")
+        if len(np.unique(y)) < 2:
+            raise ModelError("Se requieren ambas clases para entrenar")
+        self._mu = X.mean(axis=0); self._sigma = X.std(axis=0)
+        self._sigma[self._sigma == 0] = 1.0
+        self._X = (X - self._mu) / self._sigma
+        self._y = y
+        return self
+
+    def predict_proba(self, X) -> np.ndarray:
+        if self._X is None:
+            raise ModelError("El modelo no está entrenado")
+        Xs = (np.atleast_2d(np.asarray(X, dtype=float)) - self._mu) / self._sigma
+        k = min(self.k, len(self._X))
+        out = np.empty(len(Xs))
+        for i, x in enumerate(Xs):
+            dist = np.log1p(np.abs(self._X - x)).sum(axis=1)
+            nn = np.argpartition(dist, k - 1)[:k]
+            out[i] = float(self._y[nn].mean())
+        return out
+
+
 _MODELS = {
     "logistic": LogisticRegressionModel,
     "gboosting": SklearnGBModel,
     "xgboost": XGBoostModel,
+    "lorentzian": LorentzianModel,
 }
 
 
