@@ -24,7 +24,12 @@ instruments:
     sqlite_path: data/trading_XAUUSD.db
     cards_path: logs/decisiones_XAUUSD.log
   NAS100:
-    enabled: true           # 2º motor recomendado (mejor PF/DD, diversifica del Oro)
+    enabled: false          # DESACTIVADO tras validación fiel (con gestión): edge
+                            # demasiado fino (PF 1.022 arreglado) y frágil; la
+                            # validación previa PF 1.485 estaba inflada (no simulaba
+                            # gestión). No compensa el riesgo extra en cuenta de
+                            # 1.000. El arreglo de break-even queda listo por si se
+                            # reactiva con más capital. Cartera operativa: solo Oro.
     symbol: NAS100
     contract_size: 10.0     # verificado en broker (Especificación): 10/lote
     max_spread: 5.0
@@ -118,7 +123,11 @@ guards:
 # Operativa en vivo
 live:
   max_positions: 2        # walk-forward 4.7a: 2 pos +24.6% neto y mejor PF que 1
-  be_trigger: 1.0         # ATR de beneficio para mover a break-even
+  be_trigger: 2.0         # ATR de beneficio para mover a break-even. Subido de 1.0
+                          # a 2.0: el backtest CON gestión simulada (walk-forward
+                          # fiel, aprendizaje ON) mostró que 1.0 scratcheaba ~29%
+                          # de los trades del Oro y RESTABA. be2.0: PF 1.089->1.154,
+                          # neto 268->610, recovery 0.57->1.35, winrate 32->45%.
   trail_trigger: 2.0      # ATR de beneficio para activar trailing
   cards_path: logs/decisiones.log  # ficha de decisión por operación (null = solo log)
 
