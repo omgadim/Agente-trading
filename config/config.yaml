@@ -69,7 +69,7 @@ mt5:
   path: null              # ruta al terminal64.exe (opcional)
   magic: 20250725
   filling: IOC            # IOC | FOK
-  bars: 500               # nº de velas por timeframe a solicitar
+  bars: 3000              # nº de velas por timeframe (ml_v2 necesita ~3000 para entrenar)
   closed_bars_only: true  # analizar solo velas CERRADAS (descarta la vela en formación)
   # Timeframe de análisis en vivo (el más fino = timeframe de decisión). M30
   # coincide con el backtest validado; el runner sigue revisando cada `interval`.
@@ -224,6 +224,20 @@ agents:
     retrain_every: 50       # reentrenamiento periódico
     min_train: 150
     max_train_window: 3000  # tope de la ventana de entrenamiento (rolling)
+
+  # ML v2: ACTIVO. Features multi-timeframe (M30+H1+H4) + etiqueta triple-barrera
+  # + clasificador Lorentzian. Único ML que SUPERA al baseline en walk-forward
+  # 4.7a: PF 1.62 -> 1.698 y drawdown 411 -> 174 (a igual riesgo 1%). Recovery
+  # 7.7 -> 16.6. Reemplaza al machine_learning viejo (que restaba).
+  ml_v2:
+    enabled: true
+    model: lorentzian       # lorentzian (ganador) | gboosting | xgboost | logistic
+    horizon: 12             # barras a futuro para la barrera vertical
+    barrier_mult: 1.5       # ±barrier·ATR: barreras simétricas de la etiqueta
+    margin: 0.10            # umbral de probabilidad sobre 0.5 para señalar
+    retrain_every: 100      # k-NN: "reentrena" (recarga ventana) cada N decisiones
+    min_train: 200
+    max_train_window: 3000  # ventana de entrenamiento (necesita mt5.bars >= 3000)
 
   # --- Fase 5: Contexto externo (implementados) ---
   # Requieren un proveedor de datos. El NewsAgent puede cargar un CSV
