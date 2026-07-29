@@ -189,7 +189,10 @@ agents:
     premium: 0.75          # zona alta del rango (favorece ventas)
   support_resistance: {}
   range_reversion:                # reversión S/R SOLO en rango (compra soporte/vende
-    enabled: false                # resistencia). Se valida con backtest antes de activar.
+    enabled: false                # resistencia). MEDIDO walk-forward 4.7a: casi no
+                                  # dispara (filtros estrictos) y no aporta (neto
+                                  # -0.9%, PF 1.698->1.692). Se queda apagado. El
+                                  # código queda por si se quiere afinar en el futuro.
     swing: 3                      # ventana de swings para los niveles S/R
     tol_atr: 0.5                  # cercanía (× ATR) al nivel para entrar
     sl_mult: 1.0                  # SL = nivel ± sl_mult·ATR (pasado el nivel)
