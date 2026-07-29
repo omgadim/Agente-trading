@@ -26,14 +26,18 @@ instruments:
   NAS100:
     enabled: true           # 2º motor recomendado (mejor PF/DD, diversifica del Oro)
     symbol: NAS100
-    contract_size: 1.0      # VERIFICA en tu broker (Especificación)
+    contract_size: 10.0     # verificado en broker (Especificación): 10/lote
     max_spread: 5.0
     sqlite_path: data/trading_NAS100.db
     cards_path: logs/decisiones_NAS100.log
   JPN225:
-    enabled: true           # 3er motor recomendado (diversifica de Oro Y de US)
+    enabled: false          # OJO cuenta 1.000: contract 100 + min_lot 0.01 obliga
+                            # ~20-25% de riesgo por operación (el lote mínimo del
+                            # broker ya supera el 1%). Reactivar con cuenta mayor o
+                            # contrato micro. Estrategia validada (PF 1.43), pero no
+                            # dimensionable a 1.000. Recomendado: Oro + NAS100.
     symbol: JPN225
-    contract_size: 1.0      # VERIFICA en tu broker
+    contract_size: 100.0    # verificado en broker (Especificación): 100/lote
     max_spread: 25.0
     sqlite_path: data/trading_JPN225.db
     cards_path: logs/decisiones_JPN225.log
