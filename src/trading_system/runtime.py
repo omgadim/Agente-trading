@@ -62,6 +62,12 @@ def apply_instrument(config: Dict[str, Any], name: str) -> Dict[str, Any]:
         cfg.setdefault("persistence", {})["sqlite_path"] = profile["sqlite_path"]
     if "cards_path" in profile:
         cfg.setdefault("live", {})["cards_path"] = profile["cards_path"]
+    # Gestión de posición por instrumento: permite un break-even/trailing propio
+    # (p.ej. índices necesitan más aire que el Oro para no scratchear en pullbacks).
+    if "be_trigger" in profile:
+        cfg.setdefault("live", {})["be_trigger"] = profile["be_trigger"]
+    if "trail_trigger" in profile:
+        cfg.setdefault("live", {})["trail_trigger"] = profile["trail_trigger"]
     return cfg
 
 
