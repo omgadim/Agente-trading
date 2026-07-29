@@ -179,6 +179,8 @@ class RealMT5Client(MT5Client):
         self.filling = filling
         self._mt5 = None
         self._tf_map: Dict[Timeframe, int] = {}
+        self._known_open: set = set()   # tickets de posiciones abiertas (para detectar cierres)
+        self._known_init = False
 
     # ---- conexión ----
     def connect(self) -> None:  # pragma: no cover - requiere terminal MT5
@@ -342,6 +344,50 @@ class RealMT5Client(MT5Client):
                 sl=p.sl or None, tp=p.tp or None, profit=p.profit,
             ))
         return out
+
+    def poll_closed_deals(self) -> List[ClosedDeal]:  # pragma: no cover - requiere terminal MT5
+        """Detecta las posiciones que se han CERRADO desde la última consulta.
+
+        Compara los tickets abiertos ahora contra los que estaban abiertos en la
+        llamada anterior: los que desaparecieron se cerraron (SL/TP/trailing/manual).
+        Para cada uno recupera el beneficio realizado y el precio de salida del
+        historial de operaciones (deal de cierre). Devuelve la lista para que el
+        LiveTrader marque el cierre en la base de datos, alimente el kill switch y
+        el aprendizaje. La PRIMERA llamada solo memoriza (no cierra nada retroactivo).
+        """
+        mt5 = self._require()
+        raw = mt5.positions_get() or []
+        current = {p.ticket for p in raw}
+
+        if not self._known_init:          # primera vez: solo sembrar, sin cierres
+            self._known_open = current
+            self._known_init = True
+            return []
+
+        closed_tickets = self._known_open - current
+        self._known_open = current
+        deals: List[ClosedDeal] = []
+        for ticket in closed_tickets:
+            exit_price, profit, symbol = self._closing_info(mt5, ticket)
+            deals.append(ClosedDeal(ticket, symbol or "", exit_price, profit))
+        return deals
+
+    def _closing_info(self, mt5, ticket: int):  # pragma: no cover - requiere terminal MT5
+        """Beneficio realizado (profit+swap+comisión) y precio de salida de una
+        posición cerrada, desde su historial de deals (por position_id)."""
+        try:
+            hist = mt5.history_deals_get(position=ticket) or ()
+        except Exception:
+            hist = ()
+        profit = 0.0; exit_price = 0.0; symbol = None
+        out_type = getattr(mt5, "DEAL_ENTRY_OUT", 1)
+        for d in hist:
+            profit += float(getattr(d, "profit", 0.0)) + float(getattr(d, "swap", 0.0)) \
+                + float(getattr(d, "commission", 0.0))
+            symbol = getattr(d, "symbol", symbol)
+            if getattr(d, "entry", None) == out_type:
+                exit_price = float(getattr(d, "price", 0.0))
+        return exit_price, profit, symbol
 
     def _find_raw(self, ticket: int):  # pragma: no cover - requiere terminal MT5
         raw = self._mt5.positions_get(ticket=ticket)
