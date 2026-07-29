@@ -56,11 +56,19 @@ def main() -> None:
     ap.add_argument("--interval", type=float, default=30.0, help="Segundos entre refrescos")
     ap.add_argument("--once", action="store_true", help="Genera una sola vez y termina")
     ap.add_argument("--open", action="store_true", help="Abre el HTML en el navegador al arrancar")
+    ap.add_argument("--instrument", default=None,
+                    help="Perfil de instrumento (config.instruments); ej. XAUUSD. "
+                         "Hace que el monitor lea la MISMA base que esa instancia "
+                         "(p. ej. data/trading_XAUUSD.db). Sin esto usa la base base.")
     args = ap.parse_args()
 
     setup_logging("INFO")
     config_path = args.config or (Path(__file__).resolve().parents[1] / "config" / "config.yaml")
     config = load_config(config_path)
+    if args.instrument:
+        from trading_system.runtime import apply_instrument
+        config = apply_instrument(config, args.instrument)
+        logger.info("Monitor del instrumento: %s", args.instrument)
     repo = _open_repository(config)
     output = Path(args.output).resolve()
     label = _db_label(config)
