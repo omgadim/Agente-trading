@@ -131,6 +131,23 @@ live:
   trail_trigger: 2.0      # ATR de beneficio para activar trailing
   cards_path: logs/decisiones.log  # ficha de decisión por operación (null = solo log)
 
+# Conmutación por régimen: SOLO afecta a los mercados laterales (RANGE); la
+# estrategia de tendencia queda intacta. Con enabled:false el comportamiento es
+# idéntico al actual. En RANGE (detección robusta: ADX bajo + pendientes de
+# EMA20/EMA50 planas) silencia a los agentes tendenciales, potencia la reversión
+# (range_reversion, que además debe activarse en agents), sube el umbral de score
+# y reduce el riesgo por operación. Se valida con backtest antes de activar.
+regime_switch:
+  enabled: false
+  adx_max: 20.0            # ADX por debajo = sin tendencia
+  slope_max: 0.15          # pendiente EMA20/EMA50 (× ATR) por debajo = planas
+  slope_lookback: 10       # velas para medir la pendiente
+  reversion_agents: [range_reversion]
+  trend_damp: 0.0          # multiplicador de peso a agentes tendenciales en RANGE
+  reversion_boost: 2.0     # multiplicador a los agentes de reversión en RANGE
+  buy_threshold: 0.25      # score mínimo en RANGE (vs 0.15 en tendencia)
+  risk_pct: 0.5            # riesgo por operación en RANGE (vs 1.0 en tendencia)
+
 # Kill switch / watchdog (Fase 7): corta nuevas entradas ante riesgo.
 kill_switch:
   enabled: true

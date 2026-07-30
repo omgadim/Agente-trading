@@ -151,23 +151,49 @@ class RangeReversionAgent(BaseAgent):
         if width < 2.0 * atr:  # rango demasiado estrecho: sin recorrido útil
             return self._wait("Rango demasiado estrecho")
 
-        # 2) Apoyo en soporte -> BUY hacia la resistencia; rechazo en resistencia
-        #    -> SELL hacia el soporte. SL pasado el nivel; TP con colchón antes del
-        #    nivel opuesto. Solo si el beneficio/riesgo supera el mínimo.
+        # 2) Confirmaciones (calidad de la reversión): RSI, vela de rechazo y
+        #    ausencia de ruptura válida del nivel. Sin las tres, no se opera.
+        rsi = float(ind.rsi(df["close"], 14).iloc[-1])
+        o = float(df["open"].iloc[-1]); c = float(df["close"].iloc[-1])
+        h = float(df["high"].iloc[-1]); low_ = float(df["low"].iloc[-1])
+        rng = h - low_
+        lower_wick = min(o, c) - low_
+        upper_wick = h - max(o, c)
+        rsi_os = float(self.config.get("rsi_oversold", 40.0))
+        rsi_ob = float(self.config.get("rsi_overbought", 60.0))
+        wick_frac = float(self.config.get("rejection_wick_frac", 0.4))
+        brk = float(self.config.get("breakout_atr", 0.5)) * atr
+
+        # 3) Apoyo en soporte -> BUY hacia la resistencia; rechazo en resistencia
+        #    -> SELL hacia el soporte. SL pasado el nivel; TP con colchón.
         if (price - nearest_sup) <= tol:
+            if c < nearest_sup - brk:
+                return self._wait("Soporte perforado (ruptura válida a la baja)")
+            if rsi > rsi_os:
+                return self._wait(f"Sin sobreventa en soporte (RSI {rsi:.0f})")
+            if not (rng > 0 and lower_wick >= wick_frac * rng):
+                return self._wait("Sin vela de rechazo alcista en soporte")
             sl = nearest_sup - sl_mult * atr
             tp = nearest_res - exit_buf
             risk, reward = price - sl, tp - price
             if reward <= 0 or risk <= 0 or reward / risk < min_rr:
                 return self._wait("Reversión alcista sin beneficio/riesgo suficiente")
-            signal, expl = SignalType.BUY, f"Apoyo en soporte {nearest_sup:.2f} -> resistencia {nearest_res:.2f}"
+            signal = SignalType.BUY
+            expl = f"Rebote en soporte {nearest_sup:.2f} (RSI {rsi:.0f}, rechazo) -> {nearest_res:.2f}"
         elif (nearest_res - price) <= tol:
+            if c > nearest_res + brk:
+                return self._wait("Resistencia perforada (ruptura válida al alza)")
+            if rsi < rsi_ob:
+                return self._wait(f"Sin sobrecompra en resistencia (RSI {rsi:.0f})")
+            if not (rng > 0 and upper_wick >= wick_frac * rng):
+                return self._wait("Sin vela de rechazo bajista en resistencia")
             sl = nearest_res + sl_mult * atr
             tp = nearest_sup + exit_buf
             risk, reward = sl - price, price - tp
             if reward <= 0 or risk <= 0 or reward / risk < min_rr:
                 return self._wait("Reversión bajista sin beneficio/riesgo suficiente")
-            signal, expl = SignalType.SELL, f"Rechazo en resistencia {nearest_res:.2f} -> soporte {nearest_sup:.2f}"
+            signal = SignalType.SELL
+            expl = f"Rechazo en resistencia {nearest_res:.2f} (RSI {rsi:.0f}, mecha) -> {nearest_sup:.2f}"
         else:
             return self._wait("Precio en el centro del rango (sin nivel cercano)")
 
@@ -175,7 +201,7 @@ class RangeReversionAgent(BaseAgent):
         conf = max(55.0, min(85.0, 40.0 + 15.0 * (reward / risk)))
         return self._decision(
             signal, conf, expl, estimated_risk=48.0, stop_loss=sl, take_profit=tp,
-            support=float(nearest_sup), resistance=float(nearest_res),
+            support=float(nearest_sup), resistance=float(nearest_res), rsi=round(rsi, 1),
         )
 
 

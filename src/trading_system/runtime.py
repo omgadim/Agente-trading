@@ -155,6 +155,7 @@ def build_supervisor(config: Dict[str, Any], risk_manager: RiskManager) -> Super
         risk_manager=risk_manager,
         buy_threshold=sup_cfg.get("buy_threshold", 0.15),
         conflict_threshold=sup_cfg.get("conflict_threshold", 0.5),
+        regime_switch=config.get("regime_switch"),
     )
 
 
