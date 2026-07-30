@@ -205,6 +205,54 @@ class RangeReversionAgent(BaseAgent):
         )
 
 
+@register_agent("regime_filter")
+class RegimeFilterAgent(BaseAgent):
+    """Vigilante de régimen: deja operar en TENDENCIA, VETA en RANGO.
+
+    No genera señales ni dirección: es un filtro puro. Cuando detecta mercado
+    lateral (ADX bajo + pendientes de EMA20/EMA50 planas, normalizadas por ATR),
+    emite `veto=True` y el Supervisor no abre operaciones. En tendencia no
+    interfiere (WAIT sin veto), así la estrategia tendencial queda intacta. Se
+    activa/desactiva con `enabled` y sus umbrales son configurables.
+    """
+
+    category = "regime"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        n_slope = int(self.config.get("slope_lookback", 10))
+        if len(df) < max(60, n_slope + 55):
+            return self._wait("Datos insuficientes para régimen")
+
+        close = df["close"]
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        adx_val = float(ind.adx(df, 14).iloc[-1])
+        adx_max = float(self.config.get("adx_max", 25.0))
+        slope_max = float(self.config.get("slope_max", 0.15))
+        ema20 = ind.ema(close, 20); ema50 = ind.ema(close, 50)
+        slope20 = abs(float(ema20.iloc[-1]) - float(ema20.iloc[-1 - n_slope])) / atr
+        slope50 = abs(float(ema50.iloc[-1]) - float(ema50.iloc[-1 - n_slope])) / atr
+
+        is_range = (adx_val == adx_val and adx_val < adx_max
+                    and slope20 <= slope_max and slope50 <= slope_max)
+        if is_range:
+            return self._decision(
+                SignalType.WAIT, 0.0,
+                f"RANGO detectado (ADX={adx_val:.0f}, EMAs planas): no operar",
+                estimated_risk=60.0, veto=True,
+                veto_reason=f"Régimen lateral (ADX {adx_val:.0f} < {adx_max:.0f}, EMAs planas)",
+                adx=round(adx_val, 1),
+            )
+        return self._decision(
+            SignalType.WAIT, 0.0, f"Tendencia presente (ADX={adx_val:.0f}): operar permitido",
+            estimated_risk=30.0, adx=round(adx_val, 1),
+        )
+
+
 @register_agent("candlestick")
 class CandlestickPatternAgent(BaseAgent):
     """Patrones de vela: engulfing y pin bar sobre el timeframe primario."""

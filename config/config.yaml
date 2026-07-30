@@ -230,6 +230,11 @@ agents:
     sl_mult: 1.0                  # SL = nivel ± sl_mult·ATR (pasado el nivel)
     exit_buffer_atr: 0.5          # TP con colchón (× ATR) antes del nivel opuesto
     min_rr: 1.2                   # beneficio/riesgo mínimo para tomar la reversión
+  regime_filter:                  # vigilante tendencia/rango: VETA (no opera) en
+    enabled: false                # rango; en tendencia no interfiere. Se valida antes.
+    adx_max: 25.0                 # ADX por debajo = sin tendencia (rango)
+    slope_max: 0.15               # pendiente EMA20/EMA50 (× ATR) por debajo = planas
+    slope_lookback: 10            # velas para medir la pendiente
   candlestick: { enabled: false }  # flojo (backtest 4.7a): quitarlo sube el PF
   session: {}
   risk_management:
