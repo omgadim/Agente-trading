@@ -52,10 +52,15 @@ class CompositeNotifier(Notifier):
 
 
 # Transporte HTTP por defecto (urllib). Se puede inyectar uno falso en tests.
-def _default_http_post(url: str, data: dict) -> bool:  # pragma: no cover - usa red
+def _default_http_post(url: str, data: dict, insecure: bool = False) -> bool:  # pragma: no cover
+    import ssl
     payload = parse.urlencode(data).encode()
     req = request.Request(url, data=payload, method="POST")
-    with request.urlopen(req, timeout=10) as resp:
+    # `insecure`: para VPS con inspección SSL (antivirus/firewall que inyecta su
+    # certificado). No verifica el certificado del servidor. Solo el token/mensaje
+    # salen; úsalo solo si confías en la red del VPS (p. ej. tu propio EC2).
+    ctx = ssl._create_unverified_context() if insecure else None
+    with request.urlopen(req, timeout=10, context=ctx) as resp:
         return 200 <= resp.status < 300
 
 
@@ -63,10 +68,12 @@ class TelegramNotifier(Notifier):
     """Envía mensajes a un chat de Telegram vía Bot API."""
 
     def __init__(self, token: str, chat_id: str,
-                 transport: Optional[Callable[[str, dict], bool]] = None) -> None:
+                 transport: Optional[Callable[[str, dict], bool]] = None,
+                 insecure: bool = False) -> None:
         self.token = token
         self.chat_id = chat_id
-        self._transport = transport or _default_http_post
+        self.insecure = insecure
+        self._transport = transport or (lambda url, data: _default_http_post(url, data, insecure))
 
     def notify(self, message: str, subject: str = "Trading System",
                level: str = "info") -> bool:

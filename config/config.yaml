@@ -151,9 +151,15 @@ regime_switch:
 # Kill switch / watchdog (Fase 7): corta nuevas entradas ante riesgo.
 kill_switch:
   enabled: true
-  max_daily_loss: 50.0           # 5% de 1.000 (escalado al capital demo); null = sin límite
-  max_drawdown: 80.0             # 8% de 1.000 (escalado al capital demo); null = sin límite
-  max_consecutive_losses: 5      # rachas de pérdidas; null = sin límite
+  # Umbrales alineados con el comportamiento VALIDADO (no con % arbitrarios): el
+  # backtest fiel mostró drawdowns de $300-450 y rachas de hasta 11 pérdidas en
+  # una cuenta de 1.000. Los valores viejos (80 / 5) se disparaban con la variación
+  # NORMAL. Estos solo cortan ante algo ANORMAL (peor que lo visto en backtest).
+  # Si prefieres un freno más ajustado, baja risk.risk_per_trade_pct a 0.5 (halva
+  # el drawdown) y reduce estos a la mitad.
+  max_daily_loss: 100.0          # 10% de 1.000: un día genuinamente malo; null = sin límite
+  max_drawdown: 350.0            # ~beyond el peor backtest; catástrofe, no variación
+  max_consecutive_losses: 12     # backtest: hasta 11 seguidas; 12 = anormal
   flag_file: null                # ruta a un fichero cuya existencia detiene la operativa
 
 # Alertas (Fase 7): canales de notificación. Credenciales por variables de entorno.

@@ -90,8 +90,9 @@ def build_notifier(config: Dict[str, Any]) -> Optional[Notifier]:
         notifiers.append(LoggingNotifier())
     if "telegram" in channels:
         token, chat = os.getenv("TELEGRAM_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
+        insecure = os.getenv("TELEGRAM_INSECURE_SSL", "").lower() in ("1", "true", "yes")
         if token and chat:
-            notifiers.append(TelegramNotifier(token, chat))
+            notifiers.append(TelegramNotifier(token, chat, insecure=insecure))
         else:
             logger.warning("Telegram activado pero faltan TELEGRAM_TOKEN/TELEGRAM_CHAT_ID")
     if "email" in channels:
