@@ -54,14 +54,20 @@ class CompositeNotifier(Notifier):
 # Transporte HTTP por defecto (urllib). Se puede inyectar uno falso en tests.
 def _default_http_post(url: str, data: dict, insecure: bool = False) -> bool:  # pragma: no cover
     import ssl
+    from urllib.error import HTTPError
     payload = parse.urlencode(data).encode()
     req = request.Request(url, data=payload, method="POST")
     # `insecure`: para VPS con inspección SSL (antivirus/firewall que inyecta su
     # certificado). No verifica el certificado del servidor. Solo el token/mensaje
     # salen; úsalo solo si confías en la red del VPS (p. ej. tu propio EC2).
     ctx = ssl._create_unverified_context() if insecure else None
-    with request.urlopen(req, timeout=10, context=ctx) as resp:
-        return 200 <= resp.status < 300
+    try:
+        with request.urlopen(req, timeout=10, context=ctx) as resp:
+            return 200 <= resp.status < 300
+    except HTTPError as exc:  # muestra el motivo real de Telegram (chat not found, etc.)
+        body = exc.read().decode("utf-8", "replace")
+        logger.warning("Telegram rechazó (HTTP %s): %s", exc.code, body)
+        return False
 
 
 class TelegramNotifier(Notifier):
