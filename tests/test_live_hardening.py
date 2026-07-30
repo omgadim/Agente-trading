@@ -141,7 +141,7 @@ def test_notifier_receives_open_and_close_events():
         trader.step()
         client.advance(3)
     subjects = {s for s, _, _ in notifier.messages}
-    assert "Operación abierta" in subjects
+    assert "Nueva operación" in subjects
     assert "Operación cerrada" in subjects
 
 

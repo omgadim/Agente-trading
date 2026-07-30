@@ -56,6 +56,11 @@ def main() -> None:
     logger.info("Conectado (%s). Símbolo=%s. Kill switch=%s. Persistencia=%s. Alertas=%s",
                 args.mode, trader.symbol, trader.kill_switch is not None,
                 trader.repository is not None, trader.notifier is not None)
+    if trader.notifier is not None:
+        trader.notifier.notify(
+            f"Símbolo:  *{trader.symbol}*\nModo:  `{args.mode}`\n"
+            f"Máx. posiciones:  `{trader.max_positions}`\nIntervalo:  `{args.interval:.0f}s`",
+            "🚀 Bot iniciado", "info")
 
     steps = 0
     try:

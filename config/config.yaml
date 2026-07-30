@@ -158,8 +158,8 @@ kill_switch:
 
 # Alertas (Fase 7): canales de notificación. Credenciales por variables de entorno.
 alerts:
-  enabled: false
-  channels: [logging]            # logging | telegram | email (combinables)
+  enabled: true
+  channels: [logging, telegram]  # logging | telegram | email (combinables)
   # telegram: token/chat_id por TELEGRAM_TOKEN / TELEGRAM_CHAT_ID
   # email:    por SMTP_HOST/PORT/USER/PASSWORD y ALERT_TO
 

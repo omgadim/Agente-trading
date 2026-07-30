@@ -139,9 +139,23 @@ class LiveTrader:
                          order.price, order.volume)
         self._persist(decision, md, order)
         self._emit_card(decision, md, order)
-        self._notify(f"Entrada {decision.signal.value} {self.symbol} @ {order.price:.2f} "
-                     f"vol={order.volume} SL={order.stop_loss} TP={order.take_profit}",
-                     "Operación abierta")
+        side = "🟢 COMPRA" if decision.signal is SignalType.BUY else "🔴 VENTA"
+        rr = None
+        if order.stop_loss and order.take_profit:
+            risk = abs(order.price - order.stop_loss)
+            reward = abs(order.take_profit - order.price)
+            rr = (reward / risk) if risk else None
+        msg = (
+            f"{side}   ·   *{self.symbol}*\n"
+            f"────────────────\n"
+            f"Precio de entrada:  `{order.price:.2f}`\n"
+            f"Volumen:  `{order.volume}` lotes\n"
+            f"Stop Loss:  `{order.stop_loss:.2f}`\n"
+            f"Take Profit:  `{order.take_profit:.2f}`\n"
+            + (f"Beneficio/Riesgo:  `1:{rr:.1f}`\n" if rr else "")
+            + f"Confianza:  `{decision.confidence:.0f}%`   ·   Régimen:  `{md.regime.key}`"
+        )
+        self._notify(msg, "Nueva operación")
         return result
 
     def _emit_card(self, decision, md, order: Order) -> None:
@@ -175,8 +189,13 @@ class LiveTrader:
             self.risk_manager.register_pnl(deal.pnl)
             if self.kill_switch is not None:
                 self.kill_switch.record_trade(deal.pnl)
-            self._notify(f"Cierre {self.symbol} pnl={deal.pnl:.2f}", "Operación cerrada",
-                         level="warning" if deal.pnl < 0 else "info")
+            outcome = "✅ GANANCIA" if deal.pnl >= 0 else "🔻 PÉRDIDA"
+            exit_txt = f"\nPrecio de salida:  `{deal.exit_price:.2f}`" if getattr(deal, "exit_price", None) else ""
+            self._notify(
+                f"{outcome}   ·   *{self.symbol}*\n"
+                f"────────────────\n"
+                f"Resultado:  `{deal.pnl:+.2f} USD`{exit_txt}",
+                "Operación cerrada", level="info" if deal.pnl >= 0 else "warning")
         if closed:
             self._save_weights()  # persistir el aprendizaje tras los cierres
         return list(closed)
