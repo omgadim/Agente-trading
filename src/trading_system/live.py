@@ -79,6 +79,8 @@ class LiveTrader:
         # Supervisor y (2) rellenar la tabla `agent_performance` del dashboard.
         self._trade_context: Dict[int, Tuple[Sequence[AgentDecision], MarketRegime]] = {}
         self._halt_notified = False
+        # (ticket, tipo) ya avisados por Telegram, para no spamear al mover el stop.
+        self._stop_moves_notified: set = set()
         # Restaura la ponderación aprendida (si hay persistencia): así el
         # aprendizaje online sobrevive a los reinicios del runner.
         self._load_weights()
@@ -289,7 +291,28 @@ class LiveTrader:
                 if self.broker.modify(pos.ticket, new_sl, pos.take_profit):
                     pos.stop_loss = new_sl
                     applied.append(action)
+                    self._notify_stop_move(action, new_sl)
         return applied
+
+    def _notify_stop_move(self, action: Dict[str, Any], new_sl: float) -> None:
+        """Avisa por Telegram (una vez por tipo y ticket) cuando el stop se mueve."""
+        kind = action.get("action")
+        key = (action.get("ticket"), kind)
+        if key in self._stop_moves_notified:
+            return
+        self._stop_moves_notified.add(key)
+        if kind == "move_to_break_even":
+            self._notify(
+                f"🛡️ *{self.symbol}* — Stop a *BREAK-EVEN*\n"
+                f"────────────────\n"
+                f"La operación ya no puede perder.\nSL movido a la entrada:  `{new_sl:.2f}`",
+                "Gestión de posición")
+        elif kind == "trailing_stop":
+            self._notify(
+                f"📈 *{self.symbol}* — *TRAILING* activado\n"
+                f"────────────────\n"
+                f"Asegurando ganancias.\nSL subido a:  `{new_sl:.2f}`",
+                "Gestión de posición")
 
     @staticmethod
     def _is_tighter(pos: Order, new_sl: float) -> bool:
