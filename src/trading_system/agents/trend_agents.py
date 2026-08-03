@@ -19,24 +19,35 @@ class TrendMultiTimeframeAgent(BaseAgent):
 
     category = "trend"
 
+    #: Escalera de pesos por marco (más peso a los superiores). Solo se usan los
+    #: timeframes realmente presentes en el `MarketData`; los ausentes se ignoran
+    #: sin distorsionar la normalización (que divide por la suma de los presentes).
+    ladder = {
+        Timeframe.M15: 1.0,
+        Timeframe.H1: 1.5,
+        Timeframe.H4: 2.0,
+        Timeframe.D1: 2.5,
+    }
+
     def analyze(self, md: MarketData) -> AgentDecision:
-        tfs = [Timeframe.M15, Timeframe.H1, Timeframe.H4, Timeframe.D1]
-        weights = {Timeframe.M15: 1.0, Timeframe.H1: 1.5, Timeframe.H4: 2.0, Timeframe.D1: 2.5}
         fast = int(self.config.get("ema_fast", 20))
         slow = int(self.config.get("ema_slow", 50))
 
         score = 0.0
         total = 0.0
         detail = []
-        for tf in tfs:
-            if not md.has(tf):
+        # Recorre únicamente los marcos disponibles (de menor a mayor), tomando
+        # el peso de la escalera. Un marco sin peso asignado (p. ej. M5) no
+        # cuenta para la tendencia.
+        for tf in sorted(md.frames, key=lambda t: t.minutes):
+            w = self.ladder.get(tf)
+            if w is None:
                 continue
             df = md.frame(tf)
             if len(df) < slow + 2:
                 continue
             ema_f = ind.ema(df["close"], fast).iloc[-1]
             ema_s = ind.ema(df["close"], slow).iloc[-1]
-            w = weights[tf]
             total += w
             if ema_f > ema_s:
                 score += w
@@ -150,4 +161,99 @@ class TechnicalIndicatorAgent(BaseAgent):
             stop_loss=sl,
             take_profit=tp,
             rsi=float(rsi) if not np.isnan(rsi) else None,
+        )
+
+
+@register_agent("supertrend_adx")
+class SuperTrendAdxAgent(BaseAgent):
+    """Seguimiento de tendencia: SuperTrend (ATR) confirmado por ADX.
+
+    El SuperTrend marca la dirección (alcista/bajista) y el nivel dinámico de
+    stop; el ADX filtra por fuerza de tendencia (solo opera si hay tendencia
+    real). Pesa más los giros recientes del SuperTrend (cambio de dirección).
+    La convicción escala con el ADX.
+    """
+
+    category = "trend"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        df = md.frame(md.primary_tf)
+        period = int(self.config.get("period", 10))
+        if len(df) < period + 20:
+            return self._wait("Datos insuficientes para SuperTrend")
+
+        st = ind.supertrend(df, period, float(self.config.get("mult", 3.0)))
+        adx = float(ind.adx(df, 14).iloc[-1])
+        trend = int(st["trend"].iloc[-1])
+        trend_prev = int(st["trend"].iloc[-2])
+        min_adx = float(self.config.get("min_adx", 20.0))
+
+        if np.isnan(adx) or adx < min_adx:
+            return self._decision(
+                SignalType.WAIT, 20.0,
+                f"Sin tendencia confirmada (ADX={0 if np.isnan(adx) else adx:.0f}<{min_adx:.0f})",
+                estimated_risk=45.0,
+            )
+
+        signal = SignalType.BUY if trend == 1 else SignalType.SELL
+        # Confianza: base por ADX, bonus si el SuperTrend acaba de girar.
+        conf = min(88.0, 45.0 + (adx - min_adx) * 1.5)
+        flipped = trend != trend_prev
+        if flipped:
+            conf = min(90.0, conf + 12.0)
+        direction = "alcista" if trend == 1 else "bajista"
+        reason = (f"SuperTrend {direction}{' (giro)' if flipped else ''}, "
+                  f"ADX={adx:.0f}")
+        sl, tp = atr_sl_tp(md.price, md.regime.atr, signal)
+        return self._decision(
+            signal, conf, reason, estimated_risk=40.0, stop_loss=sl, take_profit=tp,
+            supertrend=direction, adx=round(adx, 1),
+        )
+
+
+@register_agent("alligator")
+class AlligatorAgent(BaseAgent):
+    """Bill Williams Alligator: tres medias suavizadas desplazadas.
+
+    - Jaw  = SMMA(13) desplazada 8   (mandíbula, lenta)
+    - Teeth= SMMA(8)  desplazada 5   (dientes)
+    - Lips = SMMA(5)  desplazada 3   (labios, rápida)
+
+    Alligator "despierto" (líneas ordenadas y abiertas) = tendencia:
+    lips>teeth>jaw -> BUY; lips<teeth<jaw -> SELL. Entrelazadas = "dormido"
+    (rango) -> WAIT (no opera). La convicción crece con la separación.
+    """
+
+    category = "trend"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        df = md.frame(md.primary_tf)
+        if len(df) < 35:
+            return self._wait("Datos insuficientes para Alligator")
+        hl2 = (df["high"] + df["low"]) / 2.0
+        jaw = ind.smma(hl2, 13).shift(8)
+        teeth = ind.smma(hl2, 8).shift(5)
+        lips = ind.smma(hl2, 5).shift(3)
+        j, t, ll = jaw.iloc[-1], teeth.iloc[-1], lips.iloc[-1]
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        price = md.price
+        if np.isnan(j) or np.isnan(t) or np.isnan(ll) or atr <= 0:
+            return self._wait("Alligator no disponible")
+
+        if ll > t > j and price > ll:
+            signal, base = SignalType.BUY, "alcista"
+        elif ll < t < j and price < ll:
+            signal, base = SignalType.SELL, "bajista"
+        else:
+            return self._decision(
+                SignalType.WAIT, 20.0, "Alligator dormido (líneas entrelazadas / rango)",
+                estimated_risk=45.0,
+            )
+
+        sep = abs(ll - j) / atr                 # apertura de la boca
+        conf = min(85.0, 50.0 + sep * 12.0)
+        sl, tp = atr_sl_tp(md.price, md.regime.atr, signal)
+        return self._decision(
+            signal, conf, f"Alligator despierto {base} (apertura {sep:.1f}·ATR)",
+            estimated_risk=40.0, stop_loss=sl, take_profit=tp, mouth_open=round(sep, 2),
         )

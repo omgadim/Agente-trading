@@ -32,7 +32,16 @@ agente nuevo no requiere tocar el Supervisor.
 pip install -r requirements.txt
 
 # Ejecuta un ciclo de decisión con datos simulados
-python -m examples.run_demo
+PYTHONPATH=src python -m examples.run_demo
+
+# Backtest walk-forward del sistema completo (con métricas)
+PYTHONPATH=src python -m examples.run_backtest
+
+# Backtest sobre datos históricos REALES (CSV de MT5: Date,Open,High,Low,Close,...)
+PYTHONPATH=src python -m examples.run_real_backtest ruta/al/XAUUSD_M1.csv --base 5 --step 4
+
+# Monitor HTML sin Docker (lee data/trading.db y abre un dashboard en el navegador)
+PYTHONPATH=src python -m examples.run_monitor --open
 ```
 
 ```python
@@ -57,24 +66,69 @@ PYTHONPATH=src pytest        # o simplemente: pytest (configurado en pyproject)
 ```
 src/trading_system/
 ├── core/          # contratos: AgentDecision, BaseAgent, registry, enums
-├── data/          # indicadores + feeds (simulado; MT5 en Fase 3)
+├── data/          # indicadores + motor de estructura/liquidez + feeds
 ├── agents/        # agentes especializados (+ scaffolds de fases futuras)
 ├── supervisor/    # Supervisor + estrategias de ponderación
-├── risk/          # RiskManager (sizing + veto)
-├── execution/     # broker interface, PaperBroker, MT5Broker (Fase 3)
+├── risk/          # RiskManager (sizing + veto) + gestión de posiciones
+├── execution/     # broker/feed MT5 (interfaz MT5Client), guards, PaperBroker
+├── ml/            # features, modelos (logística/GB/XGBoost), walk-forward
+├── context/       # proveedores externos: noticias, correlación, sentimiento
+├── persistence/   # Repository (SQLite/MySQL) de decisiones/operaciones
+├── alerts/        # notificaciones: Logging/Telegram/Email/Composite
+├── backtest/      # backtester walk-forward + métricas
 ├── utils/         # logging, config
-└── engine.py      # fachada TradingEngine
+├── engine.py      # fachada TradingEngine (backtest/decisión)
+├── runtime.py     # builders: ensambla el LiveTrader desde config
+└── live.py        # LiveTrader (live/paper + kill switch + conciliación)
 integrations/
 ├── pine/          # Pine Script v6 (visualización TradingView)
 └── dashboard/     # PHP + MySQL (Fase 6)
+.github/workflows/ # CI (lint + tests + cobertura)
+Dockerfile · docker-compose.yml   # despliegue (Fase 7)
 ```
 
 ## 🧠 Estado
 
-**Fase 1 entregada**: núcleo + 11 agentes reales + Supervisor con ponderación
-adaptativa + gestión de riesgo + tests. El resto de agentes (Smart Money, ML,
-Noticias, etc.) están registrados como *scaffolds* y se implementan por fases
-(ver ROADMAP).
+- **Fase 1 ✅** — núcleo + 11 agentes reales + Supervisor con ponderación
+  adaptativa + gestión de riesgo + tests.
+- **Fase 2 ✅** — motor compartido de estructura/liquidez + 6 agentes Smart Money
+  (SMC, Order Blocks, FVG, Liquidity Sweeps, Wyckoff, Harmonic) + backtester
+  walk-forward con métricas (winrate, PF, expectancy, max drawdown, Sharpe).
+- **Fase 3 ✅** — conexión MetaTrader 5 vía interfaz `MT5Client` (adapter real +
+  cliente simulado), `MT5Broker`/`MT5DataFeed`, `MarketGuard` (spread/horario) y
+  `LiveTrader` (gestión de posiciones + trailing/break-even). Sesión paper
+  reproducible: `python -m examples.run_live_paper`.
+- **Fase 4 ✅** — Machine Learning: features sin look-ahead, modelos
+  (logística en numpy + GradientBoosting/XGBoost opcionales), validación
+  walk-forward, `MachineLearningAgent` y `MetaModelWeighting` (meta-modelo de
+  stacking que aprende el peso de cada agente por régimen). Demo:
+  `python -m examples.run_ml_train`.
+- **Fase 5 ✅** — Contexto externo con proveedores inyectables: `NewsAgent`
+  (veto por calendario económico), `CorrelationAgent` (DXY/US10Y/SPX) y
+  `SentimentAgent` (contrarian retail). Demo: `python -m examples.run_context_demo`.
+- **Fase 6 ✅** — Persistencia (patrón Repository, SQLite/MySQL) de decisiones,
+  operaciones y desempeño por agente/régimen; dashboard PHP con KPIs y desempeño.
+  Demo: `python -m examples.run_persistence_demo`.
+- **Fase 7 ✅** — Endurecimiento y despliegue: CI (lint + tests + cobertura ~92%),
+  alertas (Telegram/Email/Composite), `KillSwitch` (pérdida diaria/drawdown/
+  rachas/flag manual), conciliación de cierres en vivo, Docker y runbook
+  operativo (`docs/OPERACIONES.md`).
+- **Operativa en vivo endurecida ✅** — decisiones **solo con velas cerradas**
+  (`mt5.closed_bars_only`, sin repintado intradía), **aprendizaje adaptativo en
+  vivo** (la ponderación del Supervisor aprende tras cada cierre, no solo en el
+  backtest) con **persistencia de pesos** (tabla `weight_state`, sobrevive a los
+  reinicios) y desempeño por agente/régimen también en live/paper.
+
+**Roadmap completo (Fases 1-7).** **23 agentes reales** operativos (incluidos
+Elliott —impulso 1-5 + corrección ABC— y Premium/Discount), sin scaffolds
+pendientes. La estructura usa BOS/CHoCH con seguimiento de tendencia y
+confluencia interna/swing (estilo LuxAlgo SMC); los Order Blocks aplican
+mitigación. Backtests, sesión paper y ML usan **datos simulados** — validan la
+mecánica y el pipeline, no un *edge* real. La operativa real requiere
+`RealMT5Client` en una **cuenta demo** de Windows (el paquete `MetaTrader5` es
+solo-Windows) y proveedores de contexto reales conectados a las interfaces de
+`context/`. Ver [`docs/ROADMAP.md`](docs/ROADMAP.md) y
+[`docs/OPERACIONES.md`](docs/OPERACIONES.md).
 
 ## ⚠️ Aviso
 

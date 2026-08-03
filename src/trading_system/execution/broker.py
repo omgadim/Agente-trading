@@ -35,6 +35,14 @@ class ExecutionBroker(ABC):
     @abstractmethod
     def open_positions(self) -> List[Order]: ...
 
+    def modify(self, ticket: int, sl: Optional[float], tp: Optional[float]) -> bool:
+        """Modifica SL/TP de una posición. Por defecto no soportado."""
+        return False
+
+    def poll_closed_deals(self) -> List:
+        """Operaciones cerradas desde la última consulta. Por defecto ninguna."""
+        return []
+
 
 class PaperBroker(ExecutionBroker):
     """Broker simulado para backtesting y tests. PnL en dinero de contrato."""
@@ -68,3 +76,13 @@ class PaperBroker(ExecutionBroker):
 
     def open_positions(self) -> List[Order]:
         return list(self._positions.values())
+
+    def modify(self, ticket: int, sl: Optional[float], tp: Optional[float]) -> bool:
+        order = self._positions.get(ticket)
+        if order is None:
+            return False
+        if sl is not None:
+            order.stop_loss = sl
+        if tp is not None:
+            order.take_profit = tp
+        return True

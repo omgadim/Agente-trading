@@ -10,6 +10,7 @@ from ..core import (
     register_agent,
 )
 from ..data import indicators as ind
+from ..risk.management import trailing_actions
 from .helpers import atr_sl_tp
 
 
@@ -80,26 +81,7 @@ class OpenTradesControlAgent(BaseAgent):
                 estimated_risk=0.0, actions=[],
             )
 
-        atr = md.regime.atr
-        actions = []
-        for pos in positions:
-            entry = float(pos.get("entry_price", md.price))
-            direction = pos.get("direction", "BUY").upper()
-            profit_atr = ((md.price - entry) if direction == "BUY" else (entry - md.price))
-            profit_in_atr = profit_atr / atr if atr else 0.0
-            if profit_in_atr >= 1.0:
-                actions.append({
-                    "ticket": pos.get("ticket"),
-                    "action": "move_to_break_even",
-                    "new_sl": entry,
-                })
-            if profit_in_atr >= 2.0 and atr:
-                trail = (md.price - atr) if direction == "BUY" else (md.price + atr)
-                actions.append({
-                    "ticket": pos.get("ticket"),
-                    "action": "trailing_stop",
-                    "new_sl": trail,
-                })
+        actions = trailing_actions(positions, md.price, md.regime.atr)
 
         expl = (
             f"{len(positions)} posición(es); {len(actions)} acción(es) de gestión"

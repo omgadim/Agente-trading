@@ -6,17 +6,20 @@ from datetime import timezone
 import numpy as np
 
 from ..core import AgentDecision, BaseAgent, MarketData, SignalType, Timeframe, register_agent
+from ..core.enums import TrendDirection
 from ..data import indicators as ind
+from ..data import structure as st
 from .helpers import atr_sl_tp
 
 
 @register_agent("market_structure")
 class MarketStructureAgent(BaseAgent):
-    """Detecta estructura por swings: HH/HL (alcista) vs LH/LL (bajista).
+    """Estructura de mercado con seguimiento de tendencia (BOS / CHoCH).
 
-    Usa pivotes fractales para identificar los dos últimos máximos y mínimos y
-    determina si la estructura es de continuación alcista, bajista o rota (posible
-    cambio de carácter / CHoCH).
+    Portado del método Smart Money de LuxAlgo: mantiene un sesgo y detecta la
+    ruptura del último swing. **CHoCH** (giro de tendencia) pesa más que **BOS**
+    (continuación). Combina dos escalas —estructura *swing* (largo plazo) e
+    *interna* (corto plazo)— y refuerza la confianza cuando ambas coinciden.
     """
 
     category = "structure"
@@ -27,31 +30,32 @@ class MarketStructureAgent(BaseAgent):
         if len(df) < 30:
             return self._wait("Datos insuficientes para estructura")
 
-        highs_mask = ind.swing_highs(df["high"], 2, 2)
-        lows_mask = ind.swing_lows(df["low"], 2, 2)
-        swing_highs = df["high"][highs_mask]
-        swing_lows = df["low"][lows_mask]
+        swing_len = int(self.config.get("swing_length", 5))
+        internal_len = int(self.config.get("internal_length", 2))
+        swing_state = st.market_structure(st.find_swings(df, swing_len, swing_len))
+        internal_state = st.market_structure(st.find_swings(df, internal_len, internal_len))
 
-        if len(swing_highs) < 2 or len(swing_lows) < 2:
-            return self._wait("Swings insuficientes")
+        # La estructura swing manda; si es indefinida, se usa la interna.
+        state = swing_state if swing_state.trend != "undefined" else internal_state
+        if state.trend == "undefined":
+            return self._wait("Estructura sin definir")
 
-        hh = swing_highs.iloc[-1] > swing_highs.iloc[-2]
-        hl = swing_lows.iloc[-1] > swing_lows.iloc[-2]
-        lh = swing_highs.iloc[-1] < swing_highs.iloc[-2]
-        ll = swing_lows.iloc[-1] < swing_lows.iloc[-2]
+        signal = SignalType.BUY if state.trend == "bullish" else SignalType.SELL
+        conf = 80.0 if state.event == "CHoCH" else 70.0   # el giro pesa más
+        # Confluencia entre escalas.
+        if internal_state.trend == swing_state.trend and swing_state.trend != "undefined":
+            conf = min(90.0, conf + 8.0)
+        elif internal_state.trend != "undefined" and swing_state.trend != "undefined" \
+                and internal_state.trend != swing_state.trend:
+            conf = max(45.0, conf - 15.0)
 
-        if hh and hl:
-            signal, conf, expl = SignalType.BUY, 75.0, "Estructura alcista (HH+HL)"
-        elif lh and ll:
-            signal, conf, expl = SignalType.SELL, 75.0, "Estructura bajista (LH+LL)"
-        elif hh and ll:
-            signal, conf, expl = SignalType.WAIT, 30.0, "Estructura en expansión (indecisa)"
-        else:
-            signal, conf, expl = SignalType.WAIT, 25.0, "Estructura mixta / posible CHoCH"
-
+        expl = (f"Estructura {state.trend} {state.event} "
+                f"(swing={swing_state.trend}/{swing_state.event}, "
+                f"interna={internal_state.trend}/{internal_state.event})")
         sl, tp = atr_sl_tp(md.price, md.regime.atr, signal)
         return self._decision(
-            signal, conf, expl, estimated_risk=40.0, stop_loss=sl, take_profit=tp
+            signal, conf, expl, estimated_risk=40.0, stop_loss=sl, take_profit=tp,
+            event=state.event, trend=state.trend,
         )
 
 
@@ -98,6 +102,157 @@ class SupportResistanceAgent(BaseAgent):
         )
 
 
+@register_agent("range_reversion")
+class RangeReversionAgent(BaseAgent):
+    """Reversión en rango sobre niveles S/R (comprar soporte / vender resistencia).
+
+    Ataca justo el punto débil del sistema tendencial: los mercados laterales,
+    donde seguir tendencia pierde. **Solo vota cuando el régimen es RANGE** (para
+    no pelear con las tendencias que el resto del panel ya explota bien); en
+    tendencia se queda callado (WAIT). Compra cuando el precio se apoya en el
+    soporte y apunta el objetivo a la resistencia (y viceversa), con SL ajustado
+    pasado el nivel. Exige una relación beneficio/riesgo mínima para no tomar
+    reversiones estrechas que el spread se comería.
+    """
+
+    category = "structure"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        # 1) Filtro de régimen: solo reversión en rango.
+        if md.regime.trend is not TrendDirection.RANGE:
+            return self._wait("Fuera de rango (régimen con tendencia)")
+
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 40:
+            return self._wait("Datos insuficientes para rango")
+
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        price = md.price
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        swing = int(self.config.get("swing", 3))
+        highs = df["high"][ind.swing_highs(df["high"], swing, swing)]
+        lows = df["low"][ind.swing_lows(df["low"], swing, swing)]
+        if highs.empty or lows.empty:
+            return self._wait("Sin niveles S/R válidos")
+
+        nearest_res = highs[highs >= price].min() if (highs >= price).any() else np.nan
+        nearest_sup = lows[lows <= price].max() if (lows <= price).any() else np.nan
+        if np.isnan(nearest_res) or np.isnan(nearest_sup):
+            return self._wait("Precio fuera del rango de swings")
+
+        tol = float(self.config.get("tol_atr", 0.5)) * atr
+        sl_mult = float(self.config.get("sl_mult", 1.0))
+        exit_buf = float(self.config.get("exit_buffer_atr", 0.5)) * atr
+        min_rr = float(self.config.get("min_rr", 1.2))
+        width = nearest_res - nearest_sup
+        if width < 2.0 * atr:  # rango demasiado estrecho: sin recorrido útil
+            return self._wait("Rango demasiado estrecho")
+
+        # 2) Confirmaciones (calidad de la reversión): RSI, vela de rechazo y
+        #    ausencia de ruptura válida del nivel. Sin las tres, no se opera.
+        rsi = float(ind.rsi(df["close"], 14).iloc[-1])
+        o = float(df["open"].iloc[-1]); c = float(df["close"].iloc[-1])
+        h = float(df["high"].iloc[-1]); low_ = float(df["low"].iloc[-1])
+        rng = h - low_
+        lower_wick = min(o, c) - low_
+        upper_wick = h - max(o, c)
+        rsi_os = float(self.config.get("rsi_oversold", 40.0))
+        rsi_ob = float(self.config.get("rsi_overbought", 60.0))
+        wick_frac = float(self.config.get("rejection_wick_frac", 0.4))
+        brk = float(self.config.get("breakout_atr", 0.5)) * atr
+
+        # 3) Apoyo en soporte -> BUY hacia la resistencia; rechazo en resistencia
+        #    -> SELL hacia el soporte. SL pasado el nivel; TP con colchón.
+        if (price - nearest_sup) <= tol:
+            if c < nearest_sup - brk:
+                return self._wait("Soporte perforado (ruptura válida a la baja)")
+            if rsi > rsi_os:
+                return self._wait(f"Sin sobreventa en soporte (RSI {rsi:.0f})")
+            if not (rng > 0 and lower_wick >= wick_frac * rng):
+                return self._wait("Sin vela de rechazo alcista en soporte")
+            sl = nearest_sup - sl_mult * atr
+            tp = nearest_res - exit_buf
+            risk, reward = price - sl, tp - price
+            if reward <= 0 or risk <= 0 or reward / risk < min_rr:
+                return self._wait("Reversión alcista sin beneficio/riesgo suficiente")
+            signal = SignalType.BUY
+            expl = f"Rebote en soporte {nearest_sup:.2f} (RSI {rsi:.0f}, rechazo) -> {nearest_res:.2f}"
+        elif (nearest_res - price) <= tol:
+            if c > nearest_res + brk:
+                return self._wait("Resistencia perforada (ruptura válida al alza)")
+            if rsi < rsi_ob:
+                return self._wait(f"Sin sobrecompra en resistencia (RSI {rsi:.0f})")
+            if not (rng > 0 and upper_wick >= wick_frac * rng):
+                return self._wait("Sin vela de rechazo bajista en resistencia")
+            sl = nearest_res + sl_mult * atr
+            tp = nearest_sup + exit_buf
+            risk, reward = sl - price, price - tp
+            if reward <= 0 or risk <= 0 or reward / risk < min_rr:
+                return self._wait("Reversión bajista sin beneficio/riesgo suficiente")
+            signal = SignalType.SELL
+            expl = f"Rechazo en resistencia {nearest_res:.2f} (RSI {rsi:.0f}, mecha) -> {nearest_sup:.2f}"
+        else:
+            return self._wait("Precio en el centro del rango (sin nivel cercano)")
+
+        # Confianza según lo holgado del beneficio/riesgo (1.2->55, 3.0->85).
+        conf = max(55.0, min(85.0, 40.0 + 15.0 * (reward / risk)))
+        return self._decision(
+            signal, conf, expl, estimated_risk=48.0, stop_loss=sl, take_profit=tp,
+            support=float(nearest_sup), resistance=float(nearest_res), rsi=round(rsi, 1),
+        )
+
+
+@register_agent("regime_filter")
+class RegimeFilterAgent(BaseAgent):
+    """Vigilante de régimen: deja operar en TENDENCIA, VETA en RANGO.
+
+    No genera señales ni dirección: es un filtro puro. Cuando detecta mercado
+    lateral (ADX bajo + pendientes de EMA20/EMA50 planas, normalizadas por ATR),
+    emite `veto=True` y el Supervisor no abre operaciones. En tendencia no
+    interfiere (WAIT sin veto), así la estrategia tendencial queda intacta. Se
+    activa/desactiva con `enabled` y sus umbrales son configurables.
+    """
+
+    category = "regime"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        n_slope = int(self.config.get("slope_lookback", 10))
+        if len(df) < max(60, n_slope + 55):
+            return self._wait("Datos insuficientes para régimen")
+
+        close = df["close"]
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        adx_val = float(ind.adx(df, 14).iloc[-1])
+        adx_max = float(self.config.get("adx_max", 25.0))
+        slope_max = float(self.config.get("slope_max", 0.15))
+        ema20 = ind.ema(close, 20); ema50 = ind.ema(close, 50)
+        slope20 = abs(float(ema20.iloc[-1]) - float(ema20.iloc[-1 - n_slope])) / atr
+        slope50 = abs(float(ema50.iloc[-1]) - float(ema50.iloc[-1 - n_slope])) / atr
+
+        is_range = (adx_val == adx_val and adx_val < adx_max
+                    and slope20 <= slope_max and slope50 <= slope_max)
+        if is_range:
+            return self._decision(
+                SignalType.WAIT, 0.0,
+                f"RANGO detectado (ADX={adx_val:.0f}, EMAs planas): no operar",
+                estimated_risk=60.0, veto=True,
+                veto_reason=f"Régimen lateral (ADX {adx_val:.0f} < {adx_max:.0f}, EMAs planas)",
+                adx=round(adx_val, 1),
+            )
+        return self._decision(
+            SignalType.WAIT, 0.0, f"Tendencia presente (ADX={adx_val:.0f}): operar permitido",
+            estimated_risk=30.0, adx=round(adx_val, 1),
+        )
+
+
 @register_agent("candlestick")
 class CandlestickPatternAgent(BaseAgent):
     """Patrones de vela: engulfing y pin bar sobre el timeframe primario."""
@@ -109,10 +264,10 @@ class CandlestickPatternAgent(BaseAgent):
         if len(df) < 3:
             return self._wait("Datos insuficientes para velas")
 
-        o, h, l, c = (df[x] for x in ("open", "high", "low", "close"))
+        o, hi, lo, c = (df[x] for x in ("open", "high", "low", "close"))
         o1, c1 = o.iloc[-1], c.iloc[-1]
         o2, c2 = o.iloc[-2], c.iloc[-2]
-        rng = h.iloc[-1] - l.iloc[-1]
+        rng = hi.iloc[-1] - lo.iloc[-1]
         body = abs(c1 - o1)
 
         signal, conf, expl = SignalType.WAIT, 0.0, "Sin patrón relevante"
@@ -125,8 +280,8 @@ class CandlestickPatternAgent(BaseAgent):
             signal, conf, expl = SignalType.SELL, 60.0, "Envolvente bajista"
         # Pin bar (mecha larga)
         elif rng > 0 and body / rng < 0.35:
-            upper = h.iloc[-1] - max(o1, c1)
-            lower = min(o1, c1) - l.iloc[-1]
+            upper = hi.iloc[-1] - max(o1, c1)
+            lower = min(o1, c1) - lo.iloc[-1]
             if lower > 2 * body and lower > upper:
                 signal, conf, expl = SignalType.BUY, 55.0, "Pin bar alcista (mecha inferior)"
             elif upper > 2 * body and upper > lower:
@@ -162,4 +317,202 @@ class SessionAgent(BaseAgent):
         return self._decision(
             SignalType.WAIT, 0.0, "Fuera de killzones (liquidez reducida)",
             estimated_risk=65.0, favorable=False,
+        )
+
+
+@register_agent("premium_discount")
+class PremiumDiscountAgent(BaseAgent):
+    """Sesgo por zona premium/discount del rango (Smart Money, LuxAlgo).
+
+    Divide el rango reciente en tres zonas: *discount* (parte baja) favorece
+    compras, *premium* (parte alta) favorece ventas, y *equilibrio* (centro) no
+    aporta señal. La convicción crece cuanto más profundo esté el precio en la
+    zona. Es un sesgo contextual, no un gatillo por sí solo.
+    """
+
+    category = "structure"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 20:
+            return self._wait("Datos insuficientes para premium/discount")
+
+        lookback = int(self.config.get("lookback", 50))
+        hi, lo, _eq = st.premium_discount(df, lookback=lookback)
+        rng = hi - lo
+        if rng <= 0:
+            return self._wait("Rango nulo")
+
+        price = md.price
+        pos = (price - lo) / rng  # 0 (mínimo) .. 1 (máximo)
+        disc_thr = float(self.config.get("discount", 0.25))
+        prem_thr = float(self.config.get("premium", 0.75))
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+
+        if pos <= disc_thr:
+            signal = SignalType.BUY
+            conf = 40.0 + (disc_thr - pos) / disc_thr * 30.0
+            expl = f"Precio en discount ({pos * 100:.0f}% del rango) → sesgo comprador"
+        elif pos >= prem_thr:
+            signal = SignalType.SELL
+            conf = 40.0 + (pos - prem_thr) / (1.0 - prem_thr) * 30.0
+            expl = f"Precio en premium ({pos * 100:.0f}% del rango) → sesgo vendedor"
+        else:
+            return self._decision(
+                SignalType.WAIT, 20.0,
+                f"Precio en equilibrio ({pos * 100:.0f}% del rango)", estimated_risk=40.0,
+            )
+
+        sl, tp = atr_sl_tp(price, atr, signal)
+        return self._decision(
+            signal, min(70.0, conf), expl, estimated_risk=45.0,
+            stop_loss=sl, take_profit=tp, zone_pos=round(pos, 3),
+        )
+
+
+@register_agent("fibonacci")
+class FibonacciAgent(BaseAgent):
+    """Retrocesos de Fibonacci del último impulso (entrada a favor de tendencia).
+
+    Toma la última pierna de impulso (dos pivotes alternados) y opera la
+    continuación cuando el precio retrocede a una zona clave (0.5 / 0.618 /
+    0.786): en un impulso alcista, compra en el pullback; en uno bajista, vende.
+    El 0.618 (golden ratio) pesa más. No entra si el retroceso ya rompió el
+    origen del impulso (estructura invalidada).
+    """
+
+    category = "structure"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 40:
+            return self._wait("Datos insuficientes para Fibonacci")
+        atr = md.regime.atr or float(ind.atr(df, 14).iloc[-1])
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        swings = st.alternating_swings(st.find_swings(df, 3, 3))
+        if len(swings) < 2:
+            return self._wait("Sin impulso para Fibonacci")
+        a, b = swings[-2], swings[-1]           # a = origen, b = fin del impulso
+        leg = b.price - a.price
+        if abs(leg) < atr:
+            return self._wait("Impulso demasiado pequeño")
+
+        price = md.price
+        up = b.kind == "high"                   # impulso alcista si termina en máximo
+        tol = float(self.config.get("tol_atr", 0.5)) * atr
+        near, best = None, tol + 1
+        for level in (0.5, 0.618, 0.786):
+            lvl_price = b.price - level * leg    # zona de retroceso
+            dist = abs(price - lvl_price)
+            if dist <= tol and dist < best:
+                near, best = level, dist
+        if near is None:
+            return self._decision(SignalType.WAIT, 20.0, "Precio fuera de zonas Fibonacci",
+                                  estimated_risk=40.0)
+
+        # Continuación en la dirección del impulso, si no se rompió el origen.
+        if up and price > a.price:
+            signal = SignalType.BUY
+        elif (not up) and price < a.price:
+            signal = SignalType.SELL
+        else:
+            return self._decision(SignalType.WAIT, 20.0, "Retroceso invalidó el impulso",
+                                  estimated_risk=45.0)
+
+        conf = 62.0 + (12.0 if abs(near - 0.618) < 1e-6 else 0.0)
+        sl, tp = atr_sl_tp(md.price, atr, signal)
+        return self._decision(
+            signal, conf, f"Retroceso {near:.3f} de Fibonacci (continuación {'alcista' if up else 'bajista'})",
+            estimated_risk=45.0, stop_loss=sl, take_profit=tp, fib_level=near,
+        )
+
+
+@register_agent("coast")
+class CoastAgent(BaseAgent):
+    """"Trading in the Coast" (Ferran Font) — SOLO la señal de entrada.
+
+    Porta la lógica de entrada del sistema: rotura *con decisión* de un nivel S/R
+    (cuerpo > body_mult×ATR) seguida de un **retest** del nivel roto, con refuerzo
+    por *Auction Market Theory* (varios intentos fallidos en el nivel antes de
+    romperlo → convicción de rotura del "canal").
+
+    Se DESCARTA por diseño la gestión del sistema original (sin stop, scale-in,
+    aguantar la perdedora): aquí el agente solo VOTA y el risk manager del sistema
+    le impone SL/TP (ATR 1.0/2.5) y el 1% de riesgo como a cualquier otro agente.
+    """
+
+    category = "structure"
+
+    def analyze(self, md: MarketData) -> AgentDecision:
+        tf = Timeframe.H1 if md.has(Timeframe.H1) else md.primary_tf
+        df = md.frame(tf)
+        if len(df) < 60:
+            return self._wait("Datos insuficientes para Coast")
+
+        pivot = int(self.config.get("pivot", 8))
+        body_mult = float(self.config.get("body_mult", 1.3))
+        retest_max = int(self.config.get("retest_max_bars", 20))
+        tol = float(self.config.get("retest_tol_pct", 0.10)) / 100.0
+        fail_threshold = int(self.config.get("fail_threshold", 3))
+        window = int(self.config.get("lookback", 120))
+
+        atr = md.regime.atr
+        if atr <= 0:
+            return self._wait("ATR no válido")
+
+        d = df.iloc[-window:] if len(df) > window else df
+        o = d["open"].to_numpy(); c = d["close"].to_numpy()
+        h = d["high"].to_numpy(); low = d["low"].to_numpy()
+        n = len(d)
+        swings = st.find_swings(d, pivot, pivot)
+        res = [(s.pos, s.price) for s in swings if s.kind == "high"]
+        sup = [(s.pos, s.price) for s in swings if s.kind == "low"]
+
+        best = None  # (signal, level, decisiveness, fails)
+        lo_b = max(1, n - retest_max - 1)
+        # Rotura+retest alcista: cierre cruza una resistencia previa con cuerpo decisivo
+        for b in range(n - 1, lo_b - 1, -1):
+            if abs(c[b] - o[b]) <= body_mult * atr:
+                continue
+            for pos, R in res:
+                if pos >= b - pivot or R <= 0:
+                    continue
+                if c[b] > R and c[b - 1] <= R and c[-1] > R and low[b:].min() <= R * (1 + tol):
+                    fails = sum(1 for p, pr in res if p < b and abs(pr - R) / R <= tol)
+                    best = (SignalType.BUY, R, abs(c[b] - o[b]) / atr, fails)
+                    break
+            if best:
+                break
+        if best is None:  # rotura+retest bajista
+            for b in range(n - 1, lo_b - 1, -1):
+                if abs(c[b] - o[b]) <= body_mult * atr:
+                    continue
+                for pos, S in sup:
+                    if pos >= b - pivot or S <= 0:
+                        continue
+                    if c[b] < S and c[b - 1] >= S and c[-1] < S and h[b:].max() >= S * (1 - tol):
+                        fails = sum(1 for p, pr in sup if p < b and abs(pr - S) / S <= tol)
+                        best = (SignalType.SELL, S, abs(c[b] - o[b]) / atr, fails)
+                        break
+                if best:
+                    break
+
+        if best is None:
+            return self._wait("Sin rotura+retest de nivel")
+
+        signal, level, decisiveness, fails = best
+        conf = 45.0 + min(25.0, (decisiveness - 1.0) * 20.0)
+        if fails >= fail_threshold:      # Auction Market Theory: 3+ intentos fallidos
+            conf = min(85.0, conf + 15.0)
+        amt = f" +AMT({fails})" if fails >= fail_threshold else ""
+        expl = (f"Coast: rotura+retest {'alcista' if signal is SignalType.BUY else 'bajista'} "
+                f"de {level:.2f} (cuerpo {decisiveness:.1f}×ATR{amt})")
+        sl, tp = atr_sl_tp(md.price, atr, signal)
+        return self._decision(
+            signal, conf, expl, estimated_risk=42.0, stop_loss=sl, take_profit=tp,
+            level=level, fails=fails,
         )

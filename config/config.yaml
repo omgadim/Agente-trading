@@ -1,9 +1,75 @@
 # Configuración del sistema de trading multiagente (XAUUSD)
 symbol: XAUUSD
 
+# --------------------------------------------------------------------------- #
+# Instrumentos operables (multi-instrumento). Cada uno corre en SU PROPIA
+# instancia (proceso) con `--instrument <NOMBRE>`. Para activar/desactivar uno,
+# cambia su `enabled`. La estrategia (agentes, pesos, riesgo %) es la MISMA para
+# todos; aquí solo se ajusta lo específico del activo.
+#
+# IMPORTANTE: `contract_size` y `max_spread` deben coincidir con tu broker.
+# Verifica el contrato en MT5: clic derecho en el símbolo -> Especificación ->
+# "Tamaño del contrato". max_spread va en el PRECIO del activo (puntos del índice).
+#
+# Validados en walk-forward 4.7a (config del Oro, sin re-calibrar):
+#   NAS100 PF 1.49 DD 6.5% | JPN225 PF 1.43 DD 12.5% | SP500 PF 1.40 DD 8.3%
+#   US30 PF 1.34 DD 15% (roza). SP500/US30 correlacionan ~0.9 con NAS100
+#   (redundantes); NAS100 + JPN225 diversifican de verdad (baja corr. con Oro).
+instruments:
+  XAUUSD:
+    enabled: true
+    symbol: XAUUSD          # nombre EXACTO en tu broker
+    contract_size: 100.0    # Oro: 100 oz/lote
+    max_spread: 0.60
+    sqlite_path: data/trading_XAUUSD.db
+    cards_path: logs/decisiones_XAUUSD.log
+  NAS100:
+    enabled: false          # DESACTIVADO tras validación fiel (con gestión): edge
+                            # demasiado fino (PF 1.022 arreglado) y frágil; la
+                            # validación previa PF 1.485 estaba inflada (no simulaba
+                            # gestión). No compensa el riesgo extra en cuenta de
+                            # 1.000. El arreglo de break-even queda listo por si se
+                            # reactiva con más capital. Cartera operativa: solo Oro.
+    symbol: NAS100
+    contract_size: 10.0     # verificado en broker (Especificación): 10/lote
+    max_spread: 5.0
+    # Gestión propia: el break-even a 1.0 ATR scratcheaba ~28% de los trades
+    # (medido con gestión simulada). Walk-forward fiel NAS100 (5 folds, aprendizaje
+    # ON): be1.0 daba PF 0.935/neto -216 (perdedor); be_off + trailing 3 ATR da
+    # PF 1.022/neto +109 y 4/5 folds. Ojo: aun arreglado el edge es fino (PF ~1.02).
+    be_trigger: 999.0       # 999 = break-even DESACTIVADO (no ahogar el trade pronto)
+    trail_trigger: 3.0      # proteger con trailing solo a partir de 3 ATR de ganancia
+    sqlite_path: data/trading_NAS100.db
+    cards_path: logs/decisiones_NAS100.log
+  JPN225:
+    enabled: false          # OJO cuenta 1.000: contract 100 + min_lot 0.01 obliga
+                            # ~20-25% de riesgo por operación (el lote mínimo del
+                            # broker ya supera el 1%). Reactivar con cuenta mayor o
+                            # contrato micro. Estrategia validada (PF 1.43), pero no
+                            # dimensionable a 1.000. Recomendado: Oro + NAS100.
+    symbol: JPN225
+    contract_size: 100.0    # verificado en broker (Especificación): 100/lote
+    max_spread: 25.0
+    sqlite_path: data/trading_JPN225.db
+    cards_path: logs/decisiones_JPN225.log
+  SP500:
+    enabled: false          # pasa el filtro pero ~0.95 corr. con NAS100 (redundante)
+    symbol: SP500
+    contract_size: 1.0      # VERIFICA en tu broker
+    max_spread: 2.0
+    sqlite_path: data/trading_SP500.db
+    cards_path: logs/decisiones_SP500.log
+  US30:
+    enabled: false          # roza el filtro (PF 1.34) y ~0.9 corr. con NAS100
+    symbol: US30
+    contract_size: 1.0      # VERIFICA en tu broker
+    max_spread: 10.0
+    sqlite_path: data/trading_US30.db
+    cards_path: logs/decisiones_US30.log
+
 # Gestión de riesgo (ver risk/risk_manager.py::RiskParameters)
 risk:
-  account_balance: 10000.0
+  account_balance: 1000.0   # alineado con la cuenta demo real (ver crecer 1.000)
   risk_per_trade_pct: 1.0
   max_daily_loss_pct: 5.0
   contract_size: 100.0
@@ -11,11 +77,104 @@ risk:
   max_lot: 50.0
   lot_step: 0.01
 
+# Conexión MetaTrader 5 (Fase 3). Credenciales por variables de entorno
+# (MT5_LOGIN/MT5_PASSWORD/MT5_SERVER); NO poner secretos aquí.
+mt5:
+  enabled: false          # true para operar en vivo con RealMT5Client
+  path: null              # ruta al terminal64.exe (opcional)
+  magic: 20250725
+  filling: IOC            # IOC | FOK
+  bars: 3000              # nº de velas por timeframe (ml_v2 necesita ~3000 para entrenar)
+  closed_bars_only: true  # analizar solo velas CERRADAS (descarta la vela en formación)
+  # Timeframe de análisis en vivo (el más fino = timeframe de decisión). M30
+  # coincide con el backtest validado; el runner sigue revisando cada `interval`.
+  timeframes: [M30, H1, H4]
+
+# Persistencia (Fase 6). backend sqlite (local/tests) o mysql (producción,
+# mismas tablas que lee el dashboard PHP). Credenciales MySQL por variables
+# de entorno DB_* (ver .env.example).
+persistence:
+  enabled: true           # ON para la demo: registra operaciones/decisiones en
+                          # SQLite (sin dependencias) para el monitor HTML y la
+                          # atribución por agente. Ponlo en false para tests/dev.
+  backend: sqlite         # sqlite | mysql
+  sqlite_path: data/trading.db
+
+# Costes de transacción (backtesting): descontados por operación (round-turn).
+costs:
+  spread: 0.30            # spread del Oro en precio (USD); se paga entero por operación
+  slippage: 0.02          # deslizamiento por lado (USD)
+  commission_per_lot: 0.0 # comisión round-turn por lote (cuenta ECN)
+
+# Guardián de mercado (condiciones de ejecución en vivo)
+guards:
+  max_spread: 0.60        # spread máximo aceptable en precio (USD); null = sin límite
+  allow_weekend: false
+  trading_hours: []       # SIN filtro horario (24h en días de semana): en la
+                          # cuenta demo dejamos que el guardián max_spread (0.60)
+                          # filtre las franjas ilíquidas con el SPREAD REAL, en vez
+                          # de recortar por reloj con un backtest de spread fijo.
+                          # El backtest 4.7a (spread fijo 0.30) da su máximo a 24h
+                          # (22635), pero ese número infla las horas de rollover y
+                          # sesión asiática. Tras 1-2 semanas de demo se fija la
+                          # ventana definitiva según qué horas operan de verdad.
+                          # Ventanas UTC permitidas [inicio, fin); ejemplo: - [2, 21]
+
+# Operativa en vivo
+live:
+  max_positions: 2        # walk-forward 4.7a: 2 pos +24.6% neto y mejor PF que 1
+  be_trigger: 2.0         # ATR de beneficio para mover a break-even. Subido de 1.0
+                          # a 2.0: el backtest CON gestión simulada (walk-forward
+                          # fiel, aprendizaje ON) mostró que 1.0 scratcheaba ~29%
+                          # de los trades del Oro y RESTABA. be2.0: PF 1.089->1.154,
+                          # neto 268->610, recovery 0.57->1.35, winrate 32->45%.
+  trail_trigger: 2.0      # ATR de beneficio para activar trailing
+  cards_path: logs/decisiones.log  # ficha de decisión por operación (null = solo log)
+
+# Conmutación por régimen: SOLO afecta a los mercados laterales (RANGE); la
+# estrategia de tendencia queda intacta. Con enabled:false el comportamiento es
+# idéntico al actual. En RANGE (detección robusta: ADX bajo + pendientes de
+# EMA20/EMA50 planas) silencia a los agentes tendenciales, potencia la reversión
+# (range_reversion, que además debe activarse en agents), sube el umbral de score
+# y reduce el riesgo por operación. Se valida con backtest antes de activar.
+regime_switch:
+  enabled: false
+  adx_max: 20.0            # ADX por debajo = sin tendencia
+  slope_max: 0.15          # pendiente EMA20/EMA50 (× ATR) por debajo = planas
+  slope_lookback: 10       # velas para medir la pendiente
+  reversion_agents: [range_reversion]
+  trend_damp: 0.0          # multiplicador de peso a agentes tendenciales en RANGE
+  reversion_boost: 2.0     # multiplicador a los agentes de reversión en RANGE
+  buy_threshold: 0.25      # score mínimo en RANGE (vs 0.15 en tendencia)
+  risk_pct: 0.5            # riesgo por operación en RANGE (vs 1.0 en tendencia)
+
+# Kill switch / watchdog (Fase 7): corta nuevas entradas ante riesgo.
+kill_switch:
+  enabled: true
+  # Umbrales alineados con el comportamiento VALIDADO (no con % arbitrarios): el
+  # backtest fiel mostró drawdowns de $300-450 y rachas de hasta 11 pérdidas en
+  # una cuenta de 1.000. Los valores viejos (80 / 5) se disparaban con la variación
+  # NORMAL. Estos solo cortan ante algo ANORMAL (peor que lo visto en backtest).
+  # Si prefieres un freno más ajustado, baja risk.risk_per_trade_pct a 0.5 (halva
+  # el drawdown) y reduce estos a la mitad.
+  max_daily_loss: 100.0          # 10% de 1.000: un día genuinamente malo; null = sin límite
+  max_drawdown: 350.0            # ~beyond el peor backtest; catástrofe, no variación
+  max_consecutive_losses: 12     # backtest: hasta 11 seguidas; 12 = anormal
+  flag_file: null                # ruta a un fichero cuya existencia detiene la operativa
+
+# Alertas (Fase 7): canales de notificación. Credenciales por variables de entorno.
+alerts:
+  enabled: true
+  channels: [logging, telegram]  # logging | telegram | email (combinables)
+  # telegram: token/chat_id por TELEGRAM_TOKEN / TELEGRAM_CHAT_ID
+  # email:    por SMTP_HOST/PORT/USER/PASSWORD y ALERT_TO
+
 # Supervisor central
 supervisor:
-  weighting: adaptive        # static | adaptive
+  weighting: meta            # static | adaptive | meta (meta gana en backtest 4.7a)
   base_weight: 1.0
   learning_rate: 0.1
+  meta_warmup: 30            # muestras por régimen antes de que el meta-modelo pese
   buy_threshold: 0.15        # zona muerta del score para pasar a BUY/SELL
   conflict_threshold: 0.5    # acuerdo mínimo del conjunto; por debajo => WAIT
   # Pesos usados solo en modo 'static':
@@ -32,27 +191,146 @@ agents:
   momentum:
     roc_period: 10
     threshold_pct: 0.15
-  technical: {}
+  technical: { enabled: false }   # flojo (backtest 4.7a): quitarlo sube el PF
   volatility: {}
-  volume: {}
-  market_structure: {}
+  volume: { enabled: false }      # flojo (backtest 4.7a): quitarlo sube el PF
+  bollinger_stoch:                # reversión en rango: Bollinger + Estocástico
+    enabled: false                # se valida con backtest antes de activarlo
+    bb_period: 20
+    bb_mult: 2.0
+    k_period: 14
+    d_period: 3
+    max_adx: 25.0                 # solo opera reversión en rango (ADX bajo)
+  supertrend_adx:                 # tendencia: SuperTrend (ATR) + filtro ADX
+    enabled: false
+    period: 10
+    mult: 3.0
+    min_adx: 20.0
+  williams_r:                     # reversión Williams %R (primo del estocástico)
+    enabled: false
+    period: 14
+    oversold: -80.0
+    overbought: -20.0
+  alligator:                      # Bill Williams Alligator (3 SMMA desplazadas)
+    enabled: true                 # backtest 4.7a: +3.3% beneficio y mejor PF
+  fibonacci:                      # retrocesos de Fib a favor de tendencia
+    enabled: false
+    tol_atr: 0.5                  # cercanía (× ATR) a la zona Fib para entrar
+  market_structure:
+    swing_length: 5        # estructura de largo plazo
+    internal_length: 2     # estructura interna (corto plazo) para confluencia
+  premium_discount:
+    enabled: false         # DESACTIVADO: contrarian, resta en un activo tendencial
+                           # (backtest 4.7a: -36% de beneficio). Reactivar con cuidado.
+    lookback: 50
+    discount: 0.25         # zona baja del rango (favorece compras)
+    premium: 0.75          # zona alta del rango (favorece ventas)
   support_resistance: {}
-  candlestick: {}
+  range_reversion:                # reversión S/R SOLO en rango (compra soporte/vende
+    enabled: false                # resistencia). MEDIDO walk-forward 4.7a: casi no
+                                  # dispara (filtros estrictos) y no aporta (neto
+                                  # -0.9%, PF 1.698->1.692). Se queda apagado. El
+                                  # código queda por si se quiere afinar en el futuro.
+    swing: 3                      # ventana de swings para los niveles S/R
+    tol_atr: 0.5                  # cercanía (× ATR) al nivel para entrar
+    sl_mult: 1.0                  # SL = nivel ± sl_mult·ATR (pasado el nivel)
+    exit_buffer_atr: 0.5          # TP con colchón (× ATR) antes del nivel opuesto
+    min_rr: 1.2                   # beneficio/riesgo mínimo para tomar la reversión
+  regime_filter:                  # vigilante tendencia/rango: VETA (no opera) en
+    enabled: false                # rango; en tendencia no interfiere. Se valida antes.
+    adx_max: 25.0                 # ADX por debajo = sin tendencia (rango)
+    slope_max: 0.15               # pendiente EMA20/EMA50 (× ATR) por debajo = planas
+    slope_lookback: 10            # velas para medir la pendiente
+  candlestick: { enabled: false }  # flojo (backtest 4.7a): quitarlo sube el PF
   session: {}
   risk_management:
     max_atr_pct: 2.5
-    sl_mult: 1.5
+    sl_mult: 1.0            # validado out-of-sample (SL ajustado + TP amplio)
     tp_mult: 2.5
   open_trades_control: {}
 
-  # --- Agentes planificados (scaffold: devuelven WAIT hasta su fase) ---
-  smart_money: { enabled: false }
-  order_blocks: { enabled: false }
-  fair_value_gap: { enabled: false }
-  liquidity_sweep: { enabled: false }
-  wyckoff: { enabled: false }
-  harmonic: { enabled: false }
-  elliott: { enabled: false }
-  correlation: { enabled: false }
-  news: { enabled: false }
-  machine_learning: { enabled: false }
+  # --- Fase 2: Smart Money / Price Action (implementados) ---
+  smart_money:
+    lookback: 50
+  order_blocks:
+    impulse_atr: 1.0
+  fair_value_gap:
+    min_atr_frac: 0.25
+  liquidity_sweep: {}
+  wyckoff:
+    lookback: 30
+  wyckoff_pro:                # Wyckoff con volumen (esfuerzo vs resultado)
+    enabled: false            # se valida con backtest antes de activarlo
+    lookback: 30
+    low_vol: 1.0              # <= media = "sin oferta/demanda"
+    high_vol: 1.5             # >= 1.5x media = ruptura confirmada (SOS/SOW)
+  harmonic: {}
+
+  # --- Fase 4: Machine Learning (implementado) ---
+  machine_learning:
+    # DESACTIVADO: backtest walk-forward 4.7a (idéntico salvo ML) muestra que
+    # activarlo RESTA fuera de muestra: PF 1.669 -> 1.639 y neto 27446 -> 25841
+    # (-5.8%). Neto atribuido negativo. El edge del sistema es tendencial/
+    # estructural (market_structure/alligator/trend_mtf), no predictivo. Apagarlo
+    # recupera el mejor resultado medido. Reactivar solo si una versión futura
+    # supera el baseline sin ML en walk-forward.
+    enabled: false
+    model: logistic         # logistic (numpy) | gboosting (sklearn) | xgboost
+    horizon: 5              # barras a futuro para la etiqueta
+    margin: 0.10            # umbral de probabilidad sobre 0.5 para señalar
+    retrain_every: 50       # reentrenamiento periódico
+    min_train: 150
+    max_train_window: 3000  # tope de la ventana de entrenamiento (rolling)
+
+  # ML v2: ACTIVO. Features multi-timeframe (M30+H1+H4) + etiqueta triple-barrera
+  # + clasificador Lorentzian. Único ML que SUPERA al baseline en walk-forward
+  # 4.7a: PF 1.62 -> 1.698 y drawdown 411 -> 174 (a igual riesgo 1%). Recovery
+  # 7.7 -> 16.6. Reemplaza al machine_learning viejo (que restaba).
+  ml_v2:
+    enabled: true
+    model: lorentzian       # lorentzian (ganador) | gboosting | xgboost | logistic
+    horizon: 12             # barras a futuro para la barrera vertical
+    barrier_mult: 1.5       # ±barrier·ATR: barreras simétricas de la etiqueta
+    margin: 0.10            # umbral de probabilidad sobre 0.5 para señalar
+    retrain_every: 100      # k-NN: "reentrena" (recarga ventana) cada N decisiones
+    min_train: 200
+    max_train_window: 3000  # ventana de entrenamiento (necesita mt5.bars >= 3000)
+
+  # --- Fase 5: Contexto externo (implementados) ---
+  # Requieren un proveedor de datos. El NewsAgent puede cargar un CSV
+  # (calendar_csv); correlation/sentiment necesitan inyectar el objeto provider
+  # en agent.config['provider'] tras construir el motor. Sin proveedor devuelven
+  # WAIT de forma inocua.
+  news:
+    calendar_csv: config/calendar_econ.csv  # calendario USD (UTC). Actualízalo cada semana.
+    blackout_before_min: 30
+    blackout_after_min: 15
+    currencies: [USD]
+  correlation:
+    # DESACTIVADO: A/B walk-forward 4.7a con USDCHF+AUDUSD reales (sin look-ahead)
+    # da -6% neto (22026 -> 20698, PF 1.646 -> 1.631). Filtra 24 trades, casi todos
+    # ganadores de las folds fuertes. El Oro en tendencia se mueve por su propia
+    # estructura, no por la correlación instantánea del franco/aussie (ruidosa).
+    # Los símbolos quedan por si se reactiva con otra lógica (p. ej. solo veto).
+    enabled: false
+    lookback: 50
+    min_abs_corr: 0.3
+    threshold: 0.1
+    timeframe: H1
+    # Activos correlacionados con el Oro (deben existir en tu broker MT5).
+    # AUDUSD ~ correlación positiva; USDCHF ~ inversa. El agente mide el signo solo.
+    symbols: [USDCHF, AUDUSD]
+  sentiment:
+    extreme_long: 70
+    extreme_short: 30
+  # Flujo de noticias (TheNewsAPI, solo-live). Veta ante ráfagas de titulares.
+  # Actívalo en el VPS con la variable de entorno NEWS_API_TOKEN.
+  news_flow:
+    enabled: false
+    window_min: 60          # ventana para contar titulares recientes
+    min_articles: 3         # nº de titulares que dispara la cautela/veto
+    refresh_sec: 900        # cada cuánto consulta la API (respeta 100 req/día)
+
+  # --- Elliott: impulso 1-5 + corrección ABC (entrada al reanudarse) ---
+  elliott:
+    tolerance: 0.05

@@ -12,14 +12,14 @@ Leyenda de estado: ✅ implementado (Fase 1) · 🚧 scaffold (WAIT + TODO) · �
 | # | Agente | Estado | Idea central |
 |---|--------|--------|--------------|
 | 1 | `MarketStructureAgent` | ✅ | HH/HL vs LH/LL → BOS/CHoCH |
-| 2 | `SmartMoneyConceptsAgent` | 🚧 | Premium/Discount, imbalance institucional |
-| 3 | `OrderBlocksAgent` | 🚧 | Última vela contraria antes de impulso |
-| 4 | `FairValueGapAgent` | 🚧 | Desequilibrios de 3 velas (FVG/imbalance) |
-| 5 | `LiquiditySweepAgent` | 🚧 | Barridos de liquidez (stop hunts) sobre highs/lows |
-| 6 | `WyckoffAgent` | 🚧 | Fases de acumulación/distribución, springs/upthrusts |
+| 2 | `SmartMoneyConceptsAgent` | ✅ | Premium/Discount + estructura (BOS/CHoCH) |
+| 3 | `OrderBlocksAgent` | ✅ | Última vela contraria antes de impulso (retest) |
+| 4 | `FairValueGapAgent` | ✅ | Desequilibrios de 3 velas (mitigación de FVG) |
+| 5 | `LiquiditySweepAgent` | ✅ | Barridos de liquidez (stop hunts) sobre highs/lows |
+| 6 | `WyckoffAgent` | ✅ | Springs (acumulación) / upthrusts (distribución) |
 | 7 | `ElliottWaveAgent` | 🚧🧠 | Conteo de ondas impulsivas/correctivas |
 | 8 | `SupportResistanceAgent` | ✅ | Zonas de swing y reacción del precio |
-| 9 | `HarmonicPatternAgent` | 🚧 | Gartley/Bat/Butterfly (ratios de Fibonacci) |
+| 9 | `HarmonicPatternAgent` | ✅ | Gartley/Bat/Butterfly/Crab (ratios de Fibonacci) |
 | 10 | `CandlestickPatternAgent` | ✅ | Engulfing, pin bar, doji, etc. |
 
 ## Categoría: Tendencia y Momentum
@@ -41,15 +41,16 @@ Leyenda de estado: ✅ implementado (Fase 1) · 🚧 scaffold (WAIT + TODO) · �
 
 | # | Agente | Estado | Idea central |
 |---|--------|--------|--------------|
-| 16 | `CorrelationAgent` | 🚧🧠 | DXY, US10Y, SPX vs XAUUSD |
-| 17 | `NewsAgent` | 🚧🧠 | Calendario económico de alto impacto (veto/timing) |
+| 16 | `CorrelationAgent` | ✅ | DXY, US10Y, SPX vs XAUUSD (provider inyectable) |
+| 17 | `NewsAgent` | ✅ | Calendario económico de alto impacto (veto/timing) |
 | 18 | `SessionAgent` (extra) | ✅ | Sesión Asia/Londres/NY, killzones |
+| 22 | `SentimentAgent` (extra) | ✅ | Contrarian sobre posicionamiento retail |
 
 ## Categoría: Inteligencia y Gestión
 
 | # | Agente | Estado | Idea central |
 |---|--------|--------|--------------|
-| 19 | `MachineLearningAgent` | 🚧🧠 | LSTM / XGBoost sobre features de mercado |
+| 19 | `MachineLearningAgent` | ✅ | Logística/XGBoost sobre features (walk-forward) |
 | 20 | `RiskManagementAgent` | ✅ | Riesgo, SL/TP por ATR, poder de veto |
 | 21 | `OpenTradesControlAgent` | ✅ | Gestión de posiciones abiertas (trailing, break-even) |
 
